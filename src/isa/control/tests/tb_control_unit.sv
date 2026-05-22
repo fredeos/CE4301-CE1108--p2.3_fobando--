@@ -30,7 +30,7 @@ module tb_control_unit ();
 
     // Testbench
     initial begin 
-        $dumpfile("./output/wave.vcd");
+        $dumpfile("./gen/control_unit.vcd");
         $dumpvars(0, tb_control_unit);
 
         clk = 0;

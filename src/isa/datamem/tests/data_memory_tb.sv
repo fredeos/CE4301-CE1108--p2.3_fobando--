@@ -25,7 +25,7 @@ module data_memory_tb();
     always #5 CLK = (CLK === 1'b0);
 
     initial begin
-        $dumpfile("./output/wave.vcd");
+        $dumpfile("./gen/datamem.vcd");
         $dumpvars(0, data_memory_tb);
         // --- 1. Reset y Estabilización ---
         CLK = 0;

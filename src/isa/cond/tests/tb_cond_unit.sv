@@ -10,7 +10,7 @@ module tb_cond_unit ();
     );
 
     initial begin
-        $dumpfile("./output/wave.vcd");
+        $dumpfile("./gen/cond_unit.vcd");
         $dumpvars(0, tb_cond_unit);
         $display("[Inicio del testbench]");
 

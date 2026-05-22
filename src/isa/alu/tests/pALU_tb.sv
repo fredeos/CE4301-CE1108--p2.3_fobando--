@@ -87,7 +87,7 @@ module pALU_tb;
  
     // -------------------- TESTS --------------------------
     initial begin
-        $dumpfile("palu.vcd");   // nombre del archivo
+        $dumpfile("./gen/pALU.vcd");   // nombre del archivo
         $dumpvars(0, pALU_tb);         // qué señales guardar
         $display(" TB pALU - WIDTH=%0d", WIDTH);
  

@@ -22,7 +22,7 @@ module instruction_memory_tb();
     initial begin
         // --- 1. System Setup ---
         $display("\n=== INSTRUCTION MEMORY VERIFICATION SYSTEM ===");
-        $dumpfile("./src/output/instruction_memory_tb.vcd");
+        $dumpfile("./gen/instrmem.vcd");
         $dumpvars(0, instruction_memory_tb);
 
         // Start at address 0

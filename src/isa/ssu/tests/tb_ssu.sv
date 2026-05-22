@@ -15,7 +15,7 @@ module tb_ssu ();
     );
 
     initial begin 
-        $dumpfile("./output/wave.vcd");
+        $dumpfile("./gen/ssu.vcd");
         $dumpvars(0, tb_ssu);
         $display("[Inicio del testbench]");
         // Configurar instrucciones

@@ -1,5 +1,6 @@
 *.vcd
 *.out
+output/
 
 # Python bytecode and caches
 __pycache__/

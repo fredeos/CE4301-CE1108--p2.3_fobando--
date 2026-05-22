@@ -9,7 +9,7 @@ module sALU_tb;
     sALU #(.WIDTH(WIDTH)) DUT (.A(A), .B(B), .Y(Y), .op(op));
 
     initial begin
-        $dumpfile("salu.vcd");   // nombre del archivo
+        $dumpfile("./gen/sALU.vcd");   // nombre del archivo
         $dumpvars(0, sALU_tb);         // qué señales guardar
         $display("--- ADD (op=0) ---");
         op = 0;

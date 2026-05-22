@@ -1,4 +1,4 @@
-module datapath ( // Pipeline de 5 etapas para arquitectura RISC: F32IS
+module pipeline ( // Pipeline de 5 etapas para arquitectura RISC: F32IS
     input logic clk, rst
 );
     localparam MEM_SIZE_KB = 64;

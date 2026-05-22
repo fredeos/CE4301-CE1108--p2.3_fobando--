@@ -185,7 +185,7 @@ module tb_hazard_unit;
     endtask
 
     initial begin
-        $dumpfile("./output/wave.vcd");
+        $dumpfile("./gen/hazard.vcd");
         $dumpvars(0, tb_hazard_unit);
 
         pass_count = 0;

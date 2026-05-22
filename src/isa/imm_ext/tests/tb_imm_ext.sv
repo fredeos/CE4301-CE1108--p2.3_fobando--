@@ -15,7 +15,7 @@ module tb_imm_ext ();
     );
 
     initial begin 
-        $dumpfile("./output/wave.vcd");
+        $dumpfile("./gen/imm_ext.vcd");
         $dumpvars(0, tb_imm_ext);
         $display("[Inicio del testbench]");
 
