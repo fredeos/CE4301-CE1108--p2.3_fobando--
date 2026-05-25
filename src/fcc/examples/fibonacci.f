@@ -1,8 +1,7 @@
 # Programa propuesto: calculo de la serie de Fibonacci.
-# Genera F(0)..F(10) en memoria y guarda F(10) como resultado final.
+# Genera F(0)..F(10) en memoria y retorna F(10) como resultado final.
 
 int fibonacci_series[11];
-int fibonacci_result;
 
 func int fibonacci_aux(int limite){
     int anterior = 0;
@@ -19,11 +18,11 @@ func int fibonacci_aux(int limite){
     }
 
     fibonacci_series[0] = anterior;
-    fibonacci_result = anterior;
+    int resultado = anterior;
 
     if (limite >= 1) {
         fibonacci_series[1] = actual;
-        fibonacci_result = actual;
+        resultado = actual;
     }
 
     while (i <= limite) {
@@ -32,11 +31,11 @@ func int fibonacci_aux(int limite){
 
         anterior = actual;
         actual = siguiente;
-        fibonacci_result = siguiente;
+        resultado = siguiente;
         i += 1;
     }
 
-    ret fibonacci_result;
+    ret resultado;
 }
 
 func int fibonacci(int n){
@@ -44,6 +43,6 @@ func int fibonacci(int n){
     ret resultado;
 }
 
-func void main(){
-    fibonacci(10);
+func int main(){
+    ret fibonacci(10);
 }

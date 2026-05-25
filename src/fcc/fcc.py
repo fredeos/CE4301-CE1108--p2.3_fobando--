@@ -9,7 +9,7 @@ from textwrap import dedent
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent
-SRC_PATH = PROJECT_ROOT / "fcc" / "src"
+SRC_PATH = PROJECT_ROOT / "src"
 if str(SRC_PATH) not in sys.path:
     sys.path.insert(0, str(SRC_PATH))
 
@@ -120,6 +120,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Agrega el directorio del compilador al PATH del usuario en Windows.",
     )
+    parser.add_argument(
+        "--ide",
+        action="store_true",
+        help="Abre el prototipo grafico de IDE para editar archivos .f.",
+    )
     return parser
 
 
@@ -213,8 +218,14 @@ def main():
     if args.install_path:
         raise SystemExit(install_to_user_path())
 
+    if args.ide:
+        from ide_app import main as run_ide
+
+        run_ide()
+        raise SystemExit(0)
+
     if not args.archivo_fuente:
-        parser.error("se requiere <archivo_fuente> o usar --install-path")
+        parser.error("se requiere <archivo_fuente>, --ide o usar --install-path")
 
     input_path = Path(args.archivo_fuente)
     include_dirs = [Path(path) for path in args.include_dirs]
