@@ -19,6 +19,7 @@ module cache #(
     input  logic [31:0] WD,
     // + Output control signals
     output logic hit,
+    output logic finished,
     // + Buffered output signals
     output logic [31:0] RD
 );
@@ -43,11 +44,14 @@ initial begin
         for (int j = 0; j < WAYS; j++) begin
             tags[i][j] = '0;
             if (i == 0 && j == 1)      tags[i][j] = {1'b1, 28'd0};
+            else if (i == 0 && j == 0) tags[i][j] = {1'b1, 28'd1};
             else if (i == 1 && j == 0) tags[i][j] = {1'b1, 28'd0};
             for (int k = 0; k < WPL; k++) begin
                 data[i][j][k] = '0;
                 if (i == 0 && j == 1 && k == 0)      data[i][j][k] = 32'h000010A2;
                 else if (i == 0 && j == 1 && k == 1) data[i][j][k] = 32'hDEADBEEF;
+                else if (i == 0 && j == 0 && k == 0) data[i][j][k] = 32'd1;
+                else if (i == 0 && j == 0 && k == 1) data[i][j][k] = 32'd2;
                 else if (i == 1 && j == 0 && k == 0) data[i][j][k] = 32'h12345678;
                 else if (i == 1 && j == 0 && k == 1) data[i][j][k] = 32'h0ABCDEF1;
             end
@@ -80,6 +84,32 @@ assign set2 = word_idx2[block_to_set-1:block_bits];
 assign tag2 = word_idx2[29:block_to_set];
 
 // --- Combinational logic (address mapping) ---
+// 1. Boundary crossing tolerance
+// + Verifies if the given address and byte selection generates conflict with boundary crossing,
+// which has potential to access invalid cache data blocks
+logic is_crossing;
+always_comb begin
+    is_crossing = 1'b0;
+    case (byte_offset)
+        2'b00: begin
+            is_crossing = 1'b0;
+        end
+
+        2'b01: begin
+            if (ASM == 4'b1111) is_crossing = 1'b1;
+        end
+
+        2'b10: begin
+            if (ASM == 4'b1111 || ASM == 4'b0111) is_crossing = 1'b1;
+        end
+
+        2'b11: begin
+            if (ASM != 4'b0001) is_crossing = 1'b1;
+        end
+    endcase
+end
+
+// 2. Hit detection
 // + Checks the tags array to verify if the address is mapped on this cache; check each way of the correspoding set
 // and verify if tags match and if valid/dirty bits indicate a valid data block. There is chance both words map to
 // the same set and even to the same way
@@ -118,7 +148,7 @@ end
 
 assign hits[0] = |hitw1;
 assign hits[1] = |hitw2;
-wire pre_hit = hits[0] & hits[1];
+wire pre_hit = (!is_crossing) ? hits[0] : (hits[0] & hits[1]);
 // --- Sequential logic (flip-flop) ---
 // + Synchronous write
 // + Synchronous read
@@ -134,7 +164,7 @@ always_ff @(posedge CLK, posedge RST) begin
     if (RST) begin
         // Reset logic
         counter <= '0;
-        hit <= '0;
+        hit <= '0; finished = '0;
         rd_byte1 <= '0; rd_byte2 <= '0; rd_byte3 <= '0; rd_byte4 <= '0;
     end else if (counter == (LATENCY-1)) begin // post results
         hit <= pre_hit;
@@ -223,10 +253,11 @@ always_ff @(posedge CLK, posedge RST) begin
             endcase
         end
         counter <= '0;
+        finished <= 1'b1;
     end else begin // standby cycles (waiting for results)
         counter <= counter + 1;
         rd_byte1 <= '0; rd_byte2 <= '0; rd_byte3 <= '0; rd_byte4 <= '0;
-        hit <= 0;
+        hit <= 0; finished <= 1'b0;
     end
 end
 
