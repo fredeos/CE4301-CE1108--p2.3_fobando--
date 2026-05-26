@@ -38,6 +38,10 @@ module cache_tb ();
         task_read(32'd4, 4'b0011);
         // 3. Lectura de byte
         task_read(32'd6, 4'b0001);
+        // 4. Lectura desfasada en mismo bloque
+        task_read(32'd2, 4'b1111);
+        // 5. Lectura desfasada en bloques distintos
+        task_read(32'd7, 4'b1111);
         // --- Pruebas de escritura ---
         // --- Volcado de memoria ---
         $display("\n[SISTEMA] Generando archivo de salida...");
