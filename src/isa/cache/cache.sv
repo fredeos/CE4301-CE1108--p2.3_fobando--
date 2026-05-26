@@ -18,10 +18,19 @@ module cache #(
     input  logic [31:0] A,
     input  logic [31:0] WD,
     // + Output control signals
-    output logic hit,
-    output logic finished,
+    output logic hit,   // cache hit
+    output logic ready, // cache ready
+    output logic queue,   // write buffer queue
+    output logic dequeue, // write buffer dequeue
+    output logic miss1, // miss on word 1
+    output logic miss2, // miss on word 2
+    output logic [3:0] pASM, // propagate ASM
     // + Buffered output signals
-    output logic [31:0] RD
+    output logic [31:0] RD,  // read-data
+    output logic [31:0] pWA, // propagate write address
+    output logic [31:0] pWD, // propagate write data
+    output logic [31:0] mA1, // miss address 1
+    output logic [31:0] mA2  // miss address 2
 );
 // --- Dynamic parameter calculation ---
 localparam BLOCKS = SIZE/(WPL*4);   // number of cache memory blocks
@@ -31,7 +40,6 @@ localparam block_bits = $clog2(WPL); // required bits from address for block off
 localparam set_bits = $clog2(SETS);  // required bits from address for set selection
 localparam way_bits = $clog2(WAYS);  // required bits for way selection
 localparam tag_bits = 32 - set_bits - block_bits - 2; // required bits from address for tag selection
-
 
 localparam block_to_set = block_bits + set_bits; // range of bits from block offset end to set selection end
 
@@ -164,13 +172,32 @@ always_ff @(posedge CLK, posedge RST) begin
     if (RST) begin
         // Reset logic
         counter <= '0;
-        hit <= '0; finished = '0;
+        hit <= '0; ready = '0;
         rd_byte1 <= '0; rd_byte2 <= '0; rd_byte3 <= '0; rd_byte4 <= '0;
+        queue <= 1'b0; dequeue <= 1'b0; pWA <= '0; pWD <= '0; pASM <= '0;
+        miss1 <= 1'b0; miss2 <= 1'b0; mA1 <= '0; mA2 <= '0;
     end else if (counter == (LATENCY-1)) begin // post results
         hit <= pre_hit;
         // >> Miss logic <<
         // + Upon a miss, cache must signal which word is missing to next memory level
-
+        miss1 <= 1'b0; miss2 <= 1'b0; mA1 <= '0; mA2 <= '0;
+        if (!hits[0]) begin 
+            miss1 <= 1'b1;
+            mA1   <= {word_idx1, 2'b00};
+        end
+        if (!hits[1]) begin
+            miss2 <= 1'b1;
+            mA2   <= {word_idx2, 2'b00};
+        end
+        // >> Write-through logic <<
+        queue <= 1'b0; dequeue <= 1'b0; pWA <= '0; pWD <= '0; pASM <= '0;
+        if (WE && pre_hit) begin
+            queue <= 1'b1;
+            dequeue <= 1'b1;
+            pASM <= ASM;
+            pWA <= A;
+            pWD <= WD;
+        end
         // >> Read & write logic <<
         rd_byte1 <= '0; rd_byte2 <= '0; rd_byte3 <= '0; rd_byte4 <= '0;
         if (pre_hit) begin
@@ -253,11 +280,13 @@ always_ff @(posedge CLK, posedge RST) begin
             endcase
         end
         counter <= '0;
-        finished <= 1'b1;
+        ready <= 1'b1;
     end else begin // standby cycles (waiting for results)
         counter <= counter + 1;
         rd_byte1 <= '0; rd_byte2 <= '0; rd_byte3 <= '0; rd_byte4 <= '0;
-        hit <= 0; finished <= 1'b0;
+        hit <= 0; ready <= 1'b0;
+        queue <= 1'b0; dequeue <= 1'b0; pWA <= '0; pWD <= '0; pASM <= '0;
+        miss1 <= 1'b0; miss2 <= 1'b0; mA1 <= '0; mA2 <= '0;
     end
 end
 
