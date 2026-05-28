@@ -2,49 +2,33 @@ module cache_tb ();
 
     localparam LAT = 2;
 
-    logic clk, rst, hit, ready, we;
-    logic queue, dequeue, miss1, miss2;
-    logic valid, hold;
+    logic clk, rst;
+    logic we, re;
+    logic w_hit, r_hit, w_ready, r_ready;
+    logic [3:0] bm;
+    logic [31:0] addr, wd, rd;
 
-    logic [3:0]  asm;
-    logic [31:0] addr, rd, wd;
-
-    logic [31:0] miss_addr1, miss_addr2;
-
-    logic [3:0]  wbuff_asm_in, wbuff_asm_out;
+    logic queue, dequeue;
+    logic [3:0]  wbuff_bm_in, wbuff_bm_out;
     logic [31:0] wbuff_addr_in, wbuff_wd_in, wbuff_addr_out, wbuff_wd_out;
 
     always #5 clk = ~clk;
 
     cache #(.SIZE(32), .WPL(2), .WAYS(2), .LATENCY(LAT)) _dut (
-        .CLK(clk),
-        .RST(rst),
-        .WE(we),
-        .ASM(asm),
-        .A(addr),
-        .WD(wd),
-        .hit(hit),.ready(ready),
+        .CLK(clk), .RST(rst),
+        .WE(we), .WBM(bm), .WA(addr), .WD(wd),
+        .RE(re), .RBM(bm), .RA(addr), .RD(rd),
+        .hit({w_hit, r_hit}), .ready({w_ready, r_ready}),
         .queue(queue), .dequeue(),
-        .miss1(miss1), .miss2(miss2),
-        .pASM(wbuff_asm_in),
-        .RD(rd),
-        .pWA(wbuff_addr_in), .pWD(wbuff_wd_in),
-        .mA1(miss_addr1), .mA2(miss_addr2)
+        .pWBM(wbuff_bm_in), .pWA(wbuff_addr_in), .pWD(wbuff_wd_in)  
     );
 
     writebuf #(.size(2)) _bin (
-        .CLK(clk),
-        .RST(rst),
-        .queue(queue),
-        .dequeue(dequeue),
-        .addr_in(wbuff_addr_in),
-        .data_in(wbuff_wd_in),
-        .asm_in(wbuff_asm_in),
-        .addr_out(wbuff_addr_out),
-        .data_out(wbuff_wd_out),
-        .asm_out(wbuff_asm_out),
-        .valid(valid),
-        .hold(hold)
+        .CLK(clk), .RST(rst),
+        .queue(queue), .dequeue(dequeue),
+        .addr_in(wbuff_addr_in), .data_in(wbuff_wd_in), .bm_in(wbuff_bm_in),
+        .addr_out(wbuff_addr_out), .data_out(wbuff_wd_out), .bm_out(wbuff_bm_out),
+        .valid(valid), .hold(hold)
     );
 
     // --- Estimulación de entradas ---
@@ -55,8 +39,9 @@ module cache_tb ();
 
         // --- Inicialización de señales ---
         addr = '0; wd = '0;
-        asm  = 4'b0000;
-        clk = 0; rst = 1; we = 0;
+        bm  = 4'b0000;
+        re = 0; we = 0;
+        clk = 0; rst = 1;
         dequeue = 0;
         #10;
         rst = 0;
@@ -130,24 +115,22 @@ module cache_tb ();
     task task_write(input [31:0] address, input [31:0] data, input [3:0] mask);
         begin
             $display("+ TASK_WRITE: A[0x%0d], WD[%h], ASM[%b]", address, data, mask);
+            #5;
             addr = address;
             wd = data;
-            we = 1'b1;
-            asm = mask;
+            re = 1'b0; we = 1'b1;
+            bm = mask;
             for (int i = 0; i < LAT; i++) begin
                 #10;
-                if (hit && ready) $display("[%0d] Hit  detected! Content was written correctly",i+1);
-                else if (!hit && ready) begin 
-                    $display("[%0d] Miss detected! Content was not written",i+1);
-                    if (miss1) $display("\t -> Missing data on cache! A[0x%0d]", miss_addr1);
-                    if (miss2) $display("\t -> Missing data on cache! A[0x%0d]", miss_addr2);
-                end
+                if (w_hit && w_ready) $display("[%0d] Hit  detected! Content was written correctly",i+1);
+                else if (!w_hit && w_ready) $display("[%0d] Miss detected! Content was not written",i+1);
                 else     $display("[%0d] Content is being written...",i+1);
             end
             addr = '0;
             wd = '0;
-            we = 1'b0;
-            asm = 4'b0000;
+            re = 1'b0; we = 1'b0;
+            bm = 4'b0000;
+            #5;
         end
     endtask
     
@@ -156,28 +139,24 @@ module cache_tb ();
             $display("+ TASK_READ: A[0x%0d], ASM[%b]", address, mask);
             addr = address;
             wd = '0;
-            we = 1'b0;
-            asm = mask;
+            re = 1'b1; we = 1'b0;
+            bm = mask;
             for (int i = 0; i < LAT; i++) begin
                 #10;
-                if (hit && ready) $display("[%0d] Hit  detected! Content found: %h",i+1, rd);
-                else if (!hit && ready) begin
-                    $display("[%0d] Miss detected! Content was not found",i+1);
-                    if (miss1) $display("\t -> Missing data on cache! A[0x%0d]", miss_addr1);
-                    if (miss2) $display("\t -> Missing data on cache! A[0x%0d]", miss_addr2);
-                end
+                if (r_hit && r_ready) $display("[%0d] Hit  detected! Content found: %h",i+1, rd);
+                else if (!r_hit && r_ready) $display("[%0d] Miss detected! Content was not found",i+1);
                 else     $display("[%0d] Cache is still searching...",i+1);
             end
             addr = '0;
             wd = '0;
-            we = 1'b0;
-            asm = 4'b0000;
+            re = 1'b0; we = 1'b0;
+            bm = 4'b0000;
         end
     endtask
 
     task task_check_writebuf(input rm);
         begin 
-            $display("+ TASK_CHECK_WRITEBUF: A[0x%0d], WD[%h], ASM[%b], VALID[%b]", wbuff_addr_out, wbuff_wd_out, wbuff_asm_out, valid);
+            $display("+ TASK_CHECK_WRITEBUF: A[0x%0d], WD[%h], ASM[%b], VALID[%b]", wbuff_addr_out, wbuff_wd_out, wbuff_bm_out, valid);
             if (hold) $display("[WRITEBUF: full] Dequeue data");
             else $display("[WRITEBUF: not full] Buffer still has some space");
             dequeue = rm;

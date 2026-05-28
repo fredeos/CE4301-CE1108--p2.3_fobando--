@@ -8,10 +8,10 @@ module writebuf #(
     input  logic dequeue,
     input  logic [31:0] addr_in,
     input  logic [31:0] data_in,
-    input  logic [3:0]  asm_in,
+    input  logic [3:0]  bm_in,
     output logic [31:0] addr_out,
     output logic [31:0] data_out,
-    output logic [3:0]  asm_out,
+    output logic [3:0]  bm_out,
     output logic valid,
     output logic hold
 );
@@ -28,7 +28,7 @@ module writebuf #(
     end
 
     logic [31:0] idx;
-    always_ff @(posedge CLK, posedge RST) begin
+    always_ff @(negedge CLK, posedge RST) begin
         if (RST) begin
             idx <= '0;
             hold <= 1'b0;
@@ -57,7 +57,7 @@ module writebuf #(
                 if (idx < size) begin 
                     address[idx] <= addr_in;
                     data[idx] <= data_in;
-                    enables[idx] <= {1'b1, asm_in};
+                    enables[idx] <= {1'b1, bm_in};
                     idx <= idx + 1;
                 end
             end
@@ -66,6 +66,6 @@ module writebuf #(
 
     assign addr_out = address[0];
     assign data_out = data[0];
-    assign asm_out  = enables[0][3:0];
+    assign bm_out   = enables[0][3:0];
     assign valid    = enables[0][4];
 endmodule
