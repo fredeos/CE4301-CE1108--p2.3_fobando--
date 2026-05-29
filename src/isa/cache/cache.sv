@@ -3,10 +3,10 @@
 // Write policy: Write-through (write buffer)
 // Replacement policy: FIFO (queue-like shifting of data blocks)
 module cache #(
-    parameter SIZE = 32,    // Cache memory SIZE (in bytes) [default: 32 bytes]
-    parameter WPL  = 2,     // words-per-line               [default: 2 (min)]
-    parameter WAYS = 2,     // Cache memory number of WAYS per line [default: 2 (min)]
-    parameter LATENCY = 1   // Cache memory LATENCY simulation (number of CLK cycles) [default: 1 (min)]
+    parameter int SIZE = 32,    // Cache memory SIZE (in bytes) [default: 32 bytes]
+    parameter int WPL  = 2,     // words-per-line               [default: 2 (min)]
+    parameter int WAYS = 2,     // Cache memory number of WAYS per line [default: 2 (min)]
+    parameter int LATENCY = 1   // Cache memory LATENCY simulation (number of CLK cycles) [default: 1 (min)]
 )( 
     // + Sequential logic inputs
     input  logic CLK,
@@ -33,21 +33,22 @@ module cache #(
     // + Miss output signals
 );
 // --- Dynamic parameter calculation ---
-localparam BLOCKS = SIZE/(WPL*4);   // number of cache memory blocks
-localparam SETS = BLOCKS/WAYS;      // number of cache memory sets
+localparam int BLOCKS = SIZE/(WPL*4);   // number of cache memory blocks
+localparam int SETS = BLOCKS/WAYS;      // number of cache memory sets
 
-localparam block_bits = $clog2(WPL); // required bits from address for block offset
-localparam set_bits = $clog2(SETS);  // required bits from address for set selection
-localparam way_bits = $clog2(WAYS);  // required bits for way selection
-localparam tag_bits = 32 - set_bits - block_bits - 2; // required bits from address for tag selection
+localparam int block_bits = $clog2(WPL); // required bits from address for block offset
+localparam int set_bits = $clog2(SETS);  // required bits from address for set selection
+localparam int way_bits = $clog2(WAYS);  // required bits for way selection
+localparam int tag_bits = 32 - set_bits - block_bits - 2; // required bits from address for tag selection
 
-localparam block_to_set = block_bits + set_bits; // range of bits from block offset end to set selection end
+localparam int block_to_set = block_bits + set_bits; // range of bits from block offset end to set selection end
 
 // --- Cache array instantiation ---
 logic [31:0] data [0:SETS-1][0:WAYS-1][0:WPL-1]; // array for data blocks => [wordN]...[word0]
 logic [tag_bits:0] tags [0:SETS-1][0:WAYS-1];    // array for tags => [valid][tag]
 
-initial begin // cache initialization for simulation
+// --- Cache initialization ---
+initial begin 
     for (int i = 0; i < SETS; i++) begin
         for (int j = 0; j < WAYS; j++) begin
             tags[i][j] = '0;
@@ -224,14 +225,14 @@ assign rd_bytes[5] = data[rd_set2][rd_way2][rd_block_offset2][15:8];
 assign rd_bytes[6] = data[rd_set2][rd_way2][rd_block_offset2][23:16];
 assign rd_bytes[7] = data[rd_set2][rd_way2][rd_block_offset2][31:24];
 
-// --- Sequential logic (flip-flop) ---
-// Write byte selections
+// --- Synchronous write (store) ---
+// + Write byte selections
 wire wd_byte1_sel = WBM[0];
 wire wd_byte2_sel = WBM[1];
 wire wd_byte3_sel = WBM[2];
 wire wd_byte4_sel = WBM[3];
 
-// + Synchronous write
+// + Flip-Flop
 logic [31:0] read_counter, write_counter;
 always_ff @(negedge CLK, posedge RST) begin
     if (RST) begin 
@@ -295,7 +296,8 @@ always_ff @(negedge CLK, posedge RST) begin
     end
 end
 
-// Read byte selections
+// --- Synchronous read (load) ---
+// + Read byte selections
 wire rd_byte1_sel = RBM[0];
 wire rd_byte2_sel = RBM[1];
 wire rd_byte3_sel = RBM[2];

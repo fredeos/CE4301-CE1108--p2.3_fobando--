@@ -1,6 +1,6 @@
 // FIFO write buffer to propagate content between memory levels
 module writebuf #(
-    parameter size = 4 // cantidad de palabras en el buffer
+    parameter int size = 4 // Amount of words in buffer
 )(
     input  logic CLK,
     input  logic RST,

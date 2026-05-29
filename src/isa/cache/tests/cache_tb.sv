@@ -112,9 +112,29 @@ module cache_tb ();
     end
 
     // --- Tareas para interacción con la memoria cache ---
+    task task_read(input [31:0] address, input [3:0] mask);
+        begin
+            $display("+ TASK_READ: A[0x%0d], BM[%b]", address, mask);
+            addr = address;
+            wd = '0;
+            re = 1'b1; we = 1'b0;
+            bm = mask;
+            for (int i = 0; i < LAT; i++) begin
+                #10;
+                if (r_hit && r_ready) $display("[%0d] Hit  detected! Content found: %h",i+1, rd);
+                else if (!r_hit && r_ready) $display("[%0d] Miss detected! Content was not found",i+1);
+                else     $display("[%0d] Cache is still searching...",i+1);
+            end
+            addr = '0;
+            wd = '0;
+            re = 1'b0; we = 1'b0;
+            bm = 4'b0000;
+        end
+    endtask
+    
     task task_write(input [31:0] address, input [31:0] data, input [3:0] mask);
         begin
-            $display("+ TASK_WRITE: A[0x%0d], WD[%h], ASM[%b]", address, data, mask);
+            $display("+ TASK_WRITE: A[0x%0d], WD[%h], BM[%b]", address, data, mask);
             #5;
             addr = address;
             wd = data;
@@ -131,26 +151,6 @@ module cache_tb ();
             re = 1'b0; we = 1'b0;
             bm = 4'b0000;
             #5;
-        end
-    endtask
-    
-    task task_read(input [31:0] address, input [3:0] mask);
-        begin
-            $display("+ TASK_READ: A[0x%0d], ASM[%b]", address, mask);
-            addr = address;
-            wd = '0;
-            re = 1'b1; we = 1'b0;
-            bm = mask;
-            for (int i = 0; i < LAT; i++) begin
-                #10;
-                if (r_hit && r_ready) $display("[%0d] Hit  detected! Content found: %h",i+1, rd);
-                else if (!r_hit && r_ready) $display("[%0d] Miss detected! Content was not found",i+1);
-                else     $display("[%0d] Cache is still searching...",i+1);
-            end
-            addr = '0;
-            wd = '0;
-            re = 1'b0; we = 1'b0;
-            bm = 4'b0000;
         end
     endtask
 
