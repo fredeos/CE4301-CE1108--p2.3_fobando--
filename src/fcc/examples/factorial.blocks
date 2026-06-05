@@ -1,0 +1,34 @@
+bloques factorial:
+factorial_B0:
+  succ: factorial_while_cond_1
+  t1 = 1
+  resultado = t1
+  t2 = 1
+  i = t2
+
+factorial_while_cond_1:
+  pred: factorial_B0, factorial_B2
+  succ: factorial_B2, factorial_while_end_2
+  t3 = i <= a
+  if_false t3 goto factorial_while_end_2
+
+factorial_B2:
+  pred: factorial_while_cond_1
+  succ: factorial_while_cond_1
+  t4 = resultado * i
+  resultado = t4
+  t5 = 1
+  t6 = i + t5
+  i = t6
+  goto factorial_while_cond_1
+
+factorial_while_end_2:
+  pred: factorial_while_cond_1
+  return resultado
+
+bloques main:
+main_B0:
+  t1 = 8
+  param t1
+  t2 = call factorial, 1
+  return t2

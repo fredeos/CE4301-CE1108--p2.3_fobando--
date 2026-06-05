@@ -1,15 +1,8 @@
-"""Analisis interactivo para el prototipo de IDE FCC.
-
-El modulo mantiene una gramatica LL(1) explicita con conjuntos FIRST/FOLLOW,
-un parser predictivo descendente para diagnosticos y sugerencias, y una pasada
-ascendente ligera para validar delimitadores y terminaciones.
-"""
-
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 import re
-from typing import Dict, Iterable, List, Optional, Sequence, Set, Tuple
+from typing import Dict, Iterable, List, Sequence, Set, Tuple
 
 
 EPSILON = "EPSILON"
@@ -18,6 +11,8 @@ EOF = "EOF"
 
 @dataclass
 class Token:
+    """Token del IDE. Entradas: tipo/texto/posicion. Salida: unidad lexica. Uso: lexer, parser y UI."""
+
     kind: str
     lexeme: str
     line: int
@@ -28,6 +23,8 @@ class Token:
 
 @dataclass
 class Diagnostic:
+    """Diagnostico. Entradas: fase, mensaje y rango. Salida: error visual. Uso: IDE."""
+
     phase: str
     message: str
     line: int
@@ -39,12 +36,16 @@ class Diagnostic:
 
 @dataclass
 class Suggestion:
+    """Sugerencia. Entradas: texto y detalle. Salida: item del popup. Uso: IDE."""
+
     text: str
     detail: str = ""
 
 
 @dataclass
 class Correction:
+    """Correccion automatica. Entradas: rango/reemplazo. Salida: edicion. Uso: IDE."""
+
     title: str
     detail: str
     start: int
@@ -54,6 +55,8 @@ class Correction:
 
 @dataclass
 class AnalysisResult:
+    """Resultado del analisis. Entradas: productos de fases. Salida: paquete para UI. Uso: ide_app."""
+
     tokens: List[Token]
     diagnostics: List[Diagnostic]
     suggestions: List[Suggestion]
@@ -168,9 +171,15 @@ OPERATORS = {
 
 
 class FCCInteractiveLexer:
-    """Lexer simple para edicion incremental del IDE."""
+    """Lexer tolerante.
+
+    Entradas: texto parcial .f.
+    Salida: tokens y diagnosticos lexicos.
+    Uso: FCCIDEAnalyzer.analyze.
+    """
 
     def tokenize(self, text: str) -> Tuple[List[Token], List[Diagnostic]]:
+        """Entradas: codigo fuente. Salida: tokens/diagnosticos. Uso: IDE."""
         tokens: List[Token] = []
         diagnostics: List[Diagnostic] = []
         index = 0
@@ -178,6 +187,7 @@ class FCCInteractiveLexer:
         column = 0
 
         def advance(fragment: str):
+            """Entradas: fragmento consumido. Salida: actualiza linea/columna. Uso: tokenize."""
             nonlocal line, column
             for char in fragment:
                 if char == "\n":
@@ -193,10 +203,12 @@ class FCCInteractiveLexer:
             start = index
 
             if char.isspace():
+                # Espacios solo actualizan posicion, no generan token.
                 advance(char)
                 index += 1
                 continue
 
+            # Comentario multilinea: si no cierra, se reporta y se consume el resto.
             if text.startswith("#*", index):
                 close = text.find("*#", index + 2)
                 if close == -1:
@@ -218,6 +230,7 @@ class FCCInteractiveLexer:
                 index = close + 2
                 continue
 
+            # Comentario de linea: no produce tokens.
             if char == "#":
                 end = text.find("\n", index)
                 fragment = text[index:] if end == -1 else text[index:end]
@@ -225,6 +238,7 @@ class FCCInteractiveLexer:
                 index += len(fragment)
                 continue
 
+            # @secure se tokeniza antes que identificadores por iniciar con @.
             if text.startswith("@secure", index):
                 lexeme = "@secure"
                 tokens.append(Token("SECURE", lexeme, start_line, start_col, start, start + len(lexeme)))
@@ -232,6 +246,7 @@ class FCCInteractiveLexer:
                 index += len(lexeme)
                 continue
 
+            # Strings incompletos tambien se tokenizan para poder subrayarlos.
             string_match = re.match(r'"(?:\\[btnr"\'\\]|[^"\\\r\n])*"?', text[index:])
             if char == '"':
                 lexeme = string_match.group(0) if string_match else char
@@ -243,6 +258,7 @@ class FCCInteractiveLexer:
                 index += len(lexeme)
                 continue
 
+            # Chars incompletos generan diagnostico lexico recuperable.
             char_match = re.match(r"'(?:\\[btnr\"'\\]|[^'\\\r\n])'?", text[index:])
             if char == "'":
                 lexeme = char_match.group(0) if char_match else char
@@ -254,6 +270,7 @@ class FCCInteractiveLexer:
                 index += len(lexeme)
                 continue
 
+            # El orden permite distinguir hex, reales y enteros.
             number_match = re.match(r"0[xX][0-9a-fA-F]+|[0-9]+\.[0-9]+|[0-9]+", text[index:])
             if number_match:
                 lexeme = number_match.group(0)
@@ -268,6 +285,7 @@ class FCCInteractiveLexer:
                 index += len(lexeme)
                 continue
 
+            # Palabras reservadas y nombres comparten patron.
             identifier_match = re.match(r"[A-Za-z_][A-Za-z_0-9]*", text[index:])
             if identifier_match:
                 lexeme = identifier_match.group(0)
@@ -277,6 +295,7 @@ class FCCInteractiveLexer:
                 index += len(lexeme)
                 continue
 
+            # Se prueban operadores largos antes de los cortos: >= antes de >.
             matched_op = None
             for op in sorted(OPERATORS, key=len, reverse=True):
                 if text.startswith(op, index):
@@ -302,13 +321,20 @@ class FCCInteractiveLexer:
             index += 1
 
         tokens.append(Token(EOF, "", line, column, len(text), len(text)))
+        # EOF da un punto estable para sugerencias al final del texto.
         return tokens, diagnostics
 
 
 class LL1Grammar:
-    """Gramatica LL(1) resumida para explicar y guiar el IDE."""
+    """Gramatica LL(1).
+
+    Entradas: producciones internas.
+    Salida: FIRST, FOLLOW y tabla predictiva.
+    Uso: PredictiveParser y sugerencias.
+    """
 
     def __init__(self):
+        """Entradas: ninguna. Salida: gramatica calculada. Uso: FCCIDEAnalyzer."""
         self.start = "program"
         self.productions: Dict[str, List[List[str]]] = {
             "program": [["top_decl", "program"], [EPSILON]],
@@ -332,14 +358,13 @@ class LL1Grammar:
             "array_bound": [["expression"], [EPSILON]],
             "block": [["LBRACE", "statement_list", "RBRACE"]],
             "statement_list": [["statement", "statement_list"], [EPSILON]],
-            "statement": [["var_decl"], ["assignment_stmt"], ["if_stmt"], ["while_stmt"], ["for_stmt"], ["return_stmt"], ["continue_stmt"], ["break_stmt"], ["expr_stmt"], ["block"]],
-            "assignment_stmt": [["assignable", "assignment_operator", "expression", "SEMI"]],
-            "assignable": [["postfix"]],
+            "statement": [["var_decl"], ["if_stmt"], ["while_stmt"], ["for_stmt"], ["return_stmt"], ["continue_stmt"], ["break_stmt"], ["simple_stmt"], ["block"]],
+            "simple_stmt": [["expression", "simple_stmt_tail"]],
+            "simple_stmt_tail": [["assignment_operator", "expression", "SEMI"], ["SEMI"]],
             "assignment_operator": [["ASSIGN"], ["PLUS_ASSIGN"], ["MINUS_ASSIGN"], ["STAR_ASSIGN"], ["SLASH_ASSIGN"], ["PERCENT_ASSIGN"], ["AND_ASSIGN"], ["OR_ASSIGN"], ["XOR_ASSIGN"]],
             "return_stmt": [["RET", "expression_opt", "SEMI"]],
             "continue_stmt": [["CONTINUE", "SEMI"]],
             "break_stmt": [["BREAK", "SEMI"]],
-            "expr_stmt": [["expression", "SEMI"]],
             "if_stmt": [["IF", "LPAREN", "expression", "RPAREN", "block", "elif_tail", "else_opt"]],
             "elif_tail": [["ELIF", "LPAREN", "expression", "RPAREN", "block", "elif_tail"], [EPSILON]],
             "else_opt": [["ELSE", "block"], [EPSILON]],
@@ -347,7 +372,7 @@ class LL1Grammar:
             "for_stmt": [["FOR", "LPAREN", "for_initializer", "SEMI", "assignment_stmt_no_semi", "SEMI", "expression", "RPAREN", "block"]],
             "for_initializer": [["var_decl_no_semi"], ["assignment_stmt_no_semi"]],
             "var_decl_no_semi": [["type", "declarators"]],
-            "assignment_stmt_no_semi": [["assignable", "assignment_operator", "expression"]],
+            "assignment_stmt_no_semi": [["expression", "assignment_operator", "expression"]],
             "expression_opt": [["expression"], [EPSILON]],
             "expression": [["bitwise_or"]],
             "bitwise_or": [["bitwise_xor", "bitwise_or_tail"]],
@@ -374,6 +399,7 @@ class LL1Grammar:
             "primary": [["IDENTIFIER"], ["MAIN"], ["literal"], ["LPAREN", "expression", "RPAREN"]],
             "literal": [["INT_LITERAL"], ["REAL_LITERAL"], ["HEX_LITERAL"], ["STRING_LITERAL"], ["CHAR_LITERAL"], ["TRUE"], ["FALSE"]],
         }
+        # Terminales: todo simbolo usado que no es no-terminal ni EPSILON.
         self.nonterminals = set(self.productions)
         self.terminals = {
             symbol
@@ -384,85 +410,139 @@ class LL1Grammar:
         }
         self.first_sets = self._compute_first_sets()
         self.follow_sets = self._compute_follow_sets()
+        self.parse_table, self.conflicts = self._build_parse_table()
 
     def _first_of_sequence(self, symbols: Sequence[str]) -> Set[str]:
+        """Entradas: simbolos. Salida: FIRST(secuencia). Uso: FOLLOW y tabla LL(1)."""
+
         result: Set[str] = set()
         if not symbols:
             return {EPSILON}
         for symbol in symbols:
             if symbol == EPSILON:
+                # La secuencia completa puede ser vacia.
                 result.add(EPSILON)
                 break
             if symbol not in self.nonterminals:
+                # Un terminal corta la busqueda: ya sabemos como inicia.
                 result.add(symbol)
                 break
+            # Un no-terminal aporta sus posibles inicios.
             result.update(self.first_sets[symbol] - {EPSILON})
             if EPSILON not in self.first_sets[symbol]:
+                # Si no es anulable, no se mira el siguiente simbolo.
                 break
         else:
+            # Todos los simbolos de la secuencia eran anulables.
             result.add(EPSILON)
         return result
 
     def _compute_first_sets(self) -> Dict[str, Set[str]]:
+        """Entradas: producciones. Salida: FIRST por no-terminal. Uso: __init__."""
+
         first = {nonterminal: set() for nonterminal in self.nonterminals}
         changed = True
         while changed:
+            # Se sale cuando una pasada completa no agrega nada nuevo.
             changed = False
             for nonterminal, alternatives in self.productions.items():
                 for production in alternatives:
                     before = len(first[nonterminal])
                     if production == [EPSILON]:
+                        # Produccion vacia: A puede desaparecer.
                         first[nonterminal].add(EPSILON)
                     else:
+                        # Sigue al siguiente simbolo solo si el actual acepta EPSILON.
                         nullable = True
                         for symbol in production:
                             if symbol not in self.nonterminals:
+                                # Un terminal al inicio pertenece directo a FIRST(A).
                                 first[nonterminal].add(symbol)
                                 nullable = False
                                 break
+                            # FIRST(B) aporta todo excepto EPSILON.
                             first[nonterminal].update(first[symbol] - {EPSILON})
                             if EPSILON not in first[symbol]:
                                 nullable = False
                                 break
                         if nullable:
+                            # Toda la produccion puede desaparecer.
                             first[nonterminal].add(EPSILON)
+                    # Si el conjunto crecio, otra pasada puede propagar el cambio.
                     changed = changed or len(first[nonterminal]) != before
         return first
 
     def _compute_follow_sets(self) -> Dict[str, Set[str]]:
+        """Entradas: FIRST/producciones. Salida: FOLLOW por no-terminal. Uso: __init__."""
+
         follow = {nonterminal: set() for nonterminal in self.nonterminals}
+        # EOF siempre puede seguir al simbolo inicial.
         follow[self.start].add(EOF)
         changed = True
         while changed:
             changed = False
             for nonterminal, alternatives in self.productions.items():
                 for production in alternatives:
+                    # Trailer representa lo que puede aparecer despues del simbolo actual.
                     trailer = set(follow[nonterminal])
                     for symbol in reversed(production):
                         if symbol in self.nonterminals:
                             before = len(follow[symbol])
+                            # Lo que venia despues de A ahora puede seguir a este simbolo.
                             follow[symbol].update(trailer)
                             changed = changed or len(follow[symbol]) != before
                             if EPSILON in self.first_sets[symbol]:
+                                # Si symbol es anulable, tambien deja pasar el trailer previo.
                                 trailer.update(self.first_sets[symbol] - {EPSILON})
                             else:
+                                # Si no es anulable, el nuevo trailer es FIRST(symbol).
                                 trailer = set(self.first_sets[symbol])
                         elif symbol != EPSILON:
+                            # Un terminal reinicia el trailer.
                             trailer = {symbol}
         return follow
 
     def expected_for(self, nonterminal: str) -> Set[str]:
+        """Entradas: no-terminal. Salida: tokens esperables. Uso: sugerencias/diagnostico."""
         expected = set(self.first_sets.get(nonterminal, set()))
         if EPSILON in expected:
             expected.remove(EPSILON)
             expected.update(self.follow_sets.get(nonterminal, set()))
         return expected
 
+    def _build_parse_table(self) -> Tuple[Dict[Tuple[str, str], List[str]], List[str]]:
+        """Entradas: FIRST/FOLLOW. Salida: tabla LL(1) y conflictos. Uso: parser."""
+
+        table: Dict[Tuple[str, str], List[str]] = {}
+        conflicts: List[str] = []
+        for nonterminal, alternatives in self.productions.items():
+            for production in alternatives:
+                first = self._first_of_sequence(production)
+                # Producciones no anulables se indexan por su FIRST.
+                lookaheads = set(first - {EPSILON})
+                if EPSILON in first:
+                    # Producciones anulables tambien se indexan por FOLLOW(A).
+                    lookaheads.update(self.follow_sets[nonterminal])
+                for lookahead in lookaheads:
+                    key = (nonterminal, lookahead)
+                    if key in table and table[key] != production:
+                        # Un conflicto aqui indica que la gramatica no es LL(1).
+                        conflicts.append(f"{nonterminal} con {lookahead}")
+                        continue
+                    table[key] = production
+        return table, conflicts
+
 
 class PredictiveParser:
-    """Parser descendente predictivo con recuperacion simple por FOLLOW."""
+    """Parser predictivo LL(1).
+
+    Entradas: tokens y gramatica.
+    Salida: diagnosticos y esperados en cursor.
+    Uso: FCCIDEAnalyzer.analyze.
+    """
 
     def __init__(self, tokens: List[Token], grammar: LL1Grammar):
+        """Entradas: tokens/gramatica. Salida: parser listo. Uso: analyze."""
         self.tokens = tokens
         self.grammar = grammar
         self.pos = 0
@@ -471,287 +551,100 @@ class PredictiveParser:
 
     @property
     def current(self) -> Token:
+        """Entradas: posicion actual. Salida: token seguro. Uso: parse/recuperacion."""
         return self.tokens[min(self.pos, len(self.tokens) - 1)]
 
     def parse(self):
-        self._parse_program()
-        if self.current.kind != EOF:
-            self._error("EOF", "fin de archivo")
+        """Entradas: pila inicial LL(1). Salida: diagnosticos. Uso: FCCIDEAnalyzer."""
+        stack = [EOF, self.grammar.start]
+        while stack:
+            top = stack.pop()
+            lookahead = self.current.kind
+
+            if top == EPSILON:
+                # EPSILON no consume entrada.
+                continue
+
+            if top not in self.grammar.nonterminals:
+                if top == lookahead:
+                    # Terminal esperado: se consume token.
+                    self.pos += 1
+                    continue
+                self._error({top})
+                if lookahead == EOF:
+                    break
+                self._recover_terminal(top)
+                continue
+
+            production = self.grammar.parse_table.get((top, lookahead))
+            if production is None:
+                # Celda vacia en la tabla: error predictivo.
+                self._error(self._expected_from_table(top))
+                if lookahead == EOF:
+                    break
+                self._recover_nonterminal(top)
+                continue
+
+            # Aqui se usa la tabla predictiva M[no_terminal, lookahead].
+            # La pila expande de derecha a izquierda.
+            for symbol in reversed(production):
+                if symbol != EPSILON:
+                    stack.append(symbol)
         return self.diagnostics
 
-    def _at(self, *kinds: str) -> bool:
-        return self.current.kind in kinds
-
-    def _consume(self, kind: str, description: Optional[str] = None) -> bool:
-        if self.current.kind == kind:
-            self.pos += 1
-            return True
-        self._error(kind, description or DISPLAY_BY_TOKEN.get(kind, kind))
-        return False
-
-    def _error(self, expected: Iterable[str] | str, description: str = ""):
+    def _error(self, expected: Iterable[str] | str):
+        """Entradas: esperados. Salida: agrega diagnostico. Uso: parse."""
         expected_set = {expected} if isinstance(expected, str) else set(expected)
         token = self.current
         if token.kind == EOF and expected_set:
             self.expected_at_cursor.update(expected_set)
         expected_text = ", ".join(DISPLAY_BY_TOKEN.get(item, item) for item in sorted(expected_set))
-        if description:
-            message = f"se esperaba {description}."
-        else:
-            message = f"se esperaba uno de: {expected_text}."
+        message = f"se esperaba uno de: {expected_text}."
         if token.kind != EOF:
             message += f' Token recibido: "{token.lexeme}".'
         self.diagnostics.append(Diagnostic("LL(1)", message, token.line, token.column, token.start, max(token.end, token.start + 1), expected_set))
 
-    def _synchronize(self, follow: Set[str]):
-        while self.current.kind not in follow and self.current.kind != EOF:
-            self.pos += 1
-
-    def _parse_program(self):
-        while self.current.kind != EOF:
-            if self.current.kind in {"TRAIGASE", "SECURE", "FUNC", *TYPE_TOKENS}:
-                self._parse_top_decl()
-            else:
-                self._error(self.grammar.expected_for("top_decl"))
-                self._synchronize({"TRAIGASE", "SECURE", "FUNC", *TYPE_TOKENS, EOF})
-
-    def _parse_top_decl(self):
-        if self._at("TRAIGASE"):
-            self._consume("TRAIGASE")
-            self._consume("STRING_LITERAL", "ruta de import")
-            return
-        if self._at("SECURE"):
-            self._consume("SECURE")
-            self._consume("LPAREN")
-            self._consume("HEX_LITERAL", "literal hexadecimal")
-            self._consume("RPAREN")
-            self._parse_function_decl()
-            return
-        if self._at("FUNC"):
-            self._parse_function_decl()
-            return
-        self._parse_var_decl(require_semicolon=True)
-
-    def _parse_function_decl(self):
-        self._consume("FUNC")
-        self._parse_type()
-        if not self._at("IDENTIFIER", "MAIN"):
-            self._error({"IDENTIFIER", "MAIN"}, "nombre de funcion")
-        else:
-            self.pos += 1
-        self._consume("LPAREN")
-        if not self._at("RPAREN", EOF):
-            self._parse_parameter()
-            while self._at("COMMA"):
-                self._consume("COMMA")
-                self._parse_parameter()
-        self._consume("RPAREN")
-        self._parse_block()
-
-    def _parse_parameter(self):
-        self._parse_type()
-        self._consume("IDENTIFIER", "nombre de parametro")
-
-    def _parse_type(self):
-        if not self._at(*TYPE_TOKENS):
-            self._error(TYPE_TOKENS, "tipo")
-            return
-        if self._at("VAULT"):
-            self._consume("VAULT")
-            self._consume("LBRACK")
-            self._consume("INT_LITERAL", "tamano de vault")
-            self._consume("RBRACK")
-        else:
-            self.pos += 1
-        while self._at("STAR"):
-            self.pos += 1
-        self._parse_array_tail()
-
-    def _parse_array_tail(self):
-        while self._at("LBRACK"):
-            self._consume("LBRACK")
-            if not self._at("RBRACK"):
-                self._parse_expression()
-            self._consume("RBRACK")
-
-    def _parse_var_decl(self, require_semicolon: bool):
-        self._parse_type()
-        self._parse_declarator()
-        while self._at("COMMA"):
-            self._consume("COMMA")
-            self._parse_declarator()
-        if require_semicolon:
-            self._consume("SEMI", "punto y coma")
-
-    def _parse_declarator(self):
-        self._consume("IDENTIFIER", "nombre de variable")
-        self._parse_array_tail()
-        if self._at("ASSIGN"):
-            self._consume("ASSIGN")
-            self._parse_expression()
-
-    def _parse_block(self):
-        self._consume("LBRACE")
-        while self.current.kind not in {"RBRACE", EOF}:
-            self._parse_statement()
-        self._consume("RBRACE")
-
-    def _parse_statement(self):
-        if self._at(*TYPE_TOKENS):
-            self._parse_var_decl(require_semicolon=True)
-            return
-        if self._at("IF"):
-            self._parse_if()
-            return
-        if self._at("WHILE"):
-            self._parse_while()
-            return
-        if self._at("FOR"):
-            self._parse_for()
-            return
-        if self._at("RET"):
-            self._consume("RET")
-            if not self._at("SEMI"):
-                self._parse_expression()
-            self._consume("SEMI", "punto y coma")
-            return
-        if self._at("CONTINUE", "BREAK"):
-            self.pos += 1
-            self._consume("SEMI", "punto y coma")
-            return
-        if self._at("LBRACE"):
-            self._parse_block()
-            return
-        if self.current.kind in EXPRESSION_START:
-            self._parse_expression()
-            if self._at(
-                "ASSIGN", "PLUS_ASSIGN", "MINUS_ASSIGN", "STAR_ASSIGN", "SLASH_ASSIGN",
-                "PERCENT_ASSIGN", "AND_ASSIGN", "OR_ASSIGN", "XOR_ASSIGN",
-            ):
-                self.pos += 1
-                self._parse_expression()
-            self._consume("SEMI", "punto y coma")
-            return
-        self._error(STATEMENT_START, "sentencia")
-        self._synchronize({"SEMI", "RBRACE", EOF})
-        if self._at("SEMI"):
-            self.pos += 1
-
-    def _parse_if(self):
-        self._consume("IF")
-        self._consume("LPAREN")
-        self._parse_expression()
-        self._consume("RPAREN")
-        self._parse_block()
-        while self._at("ELIF"):
-            self._consume("ELIF")
-            self._consume("LPAREN")
-            self._parse_expression()
-            self._consume("RPAREN")
-            self._parse_block()
-        if self._at("ELSE"):
-            self._consume("ELSE")
-            self._parse_block()
-
-    def _parse_while(self):
-        self._consume("WHILE")
-        self._consume("LPAREN")
-        self._parse_expression()
-        self._consume("RPAREN")
-        self._parse_block()
-
-    def _parse_for(self):
-        self._consume("FOR")
-        self._consume("LPAREN")
-        if self._at(*TYPE_TOKENS):
-            self._parse_var_decl(require_semicolon=False)
-        else:
-            self._parse_expression()
-            if not self._at("ASSIGN", "PLUS_ASSIGN", "MINUS_ASSIGN", "STAR_ASSIGN", "SLASH_ASSIGN", "PERCENT_ASSIGN", "AND_ASSIGN", "OR_ASSIGN", "XOR_ASSIGN"):
-                self._error(self.grammar.expected_for("assignment_operator"), "operador de asignacion")
-            else:
-                self.pos += 1
-            self._parse_expression()
-        self._consume("SEMI")
-        self._parse_expression()
-        if not self._at("ASSIGN", "PLUS_ASSIGN", "MINUS_ASSIGN", "STAR_ASSIGN", "SLASH_ASSIGN", "PERCENT_ASSIGN", "AND_ASSIGN", "OR_ASSIGN", "XOR_ASSIGN"):
-            self._error(self.grammar.expected_for("assignment_operator"), "operador de asignacion")
-        else:
-            self.pos += 1
-        self._parse_expression()
-        self._consume("SEMI")
-        self._parse_expression()
-        self._consume("RPAREN")
-        self._parse_block()
-
-    def _parse_expression(self, min_precedence: int = 0):
-        if self._at("NOT", "MINUS", "AMPERSAND", "STAR"):
-            self.pos += 1
-            self._parse_expression(8)
-        else:
-            self._parse_primary()
-
-        precedence = {
-            "OR": 1,
-            "XOR": 2,
-            "AMPERSAND": 3,
-            "EQ": 4,
-            "NEQ": 4,
-            "LT": 5,
-            "LE": 5,
-            "GT": 5,
-            "GE": 5,
-            "SHIFT_LEFT": 6,
-            "SHIFT_RIGHT": 6,
-            "PLUS": 7,
-            "MINUS": 7,
-            "STAR": 8,
-            "SLASH": 8,
-            "PERCENT": 8,
-            "POWER": 8,
+    def _expected_from_table(self, nonterminal: str) -> Set[str]:
+        """Entradas: no-terminal. Salida: columnas validas LL(1). Uso: errores."""
+        # Se listan las columnas validas de la fila del no-terminal.
+        return {
+            terminal
+            for (row, terminal), _production in self.grammar.parse_table.items()
+            if row == nonterminal
         }
 
-        while self.current.kind in precedence and precedence[self.current.kind] >= min_precedence:
-            op_precedence = precedence[self.current.kind]
-            self.pos += 1
-            self._parse_expression(op_precedence + 1)
-
-    def _parse_primary(self):
-        if self._at("IDENTIFIER", "MAIN", *LITERAL_TOKENS):
-            self.pos += 1
-        elif self._at("LPAREN"):
-            self._consume("LPAREN")
-            self._parse_expression()
-            self._consume("RPAREN")
-        else:
-            self._error(self.grammar.expected_for("primary"), "expresion")
+    def _recover_terminal(self, terminal: str):
+        """Entradas: terminal esperado. Salida: avanza o simula insercion. Uso: parse."""
+        if self.current.kind == EOF:
             return
+        # Simula insercion de cierres comunes; para otros tokens descarta entrada.
+        if terminal in {"SEMI", "RPAREN", "RBRACE", "RBRACK"}:
+            return
+        # Avance panic-mode minimo para evitar ciclos infinitos.
+        self.pos += 1
 
-        while self._at("LPAREN", "LBRACK", "DOT"):
-            if self._at("LPAREN"):
-                self._consume("LPAREN")
-                if not self._at("RPAREN"):
-                    self._parse_expression()
-                    while self._at("COMMA"):
-                        self._consume("COMMA")
-                        self._parse_expression()
-                self._consume("RPAREN")
-            elif self._at("LBRACK"):
-                self._consume("LBRACK")
-                self._parse_expression()
-                self._consume("RBRACK")
-            else:
-                self._consume("DOT")
-                self._consume("IDENTIFIER", "miembro")
-
+    def _recover_nonterminal(self, nonterminal: str):
+        """Entradas: no-terminal. Salida: panic-mode local. Uso: parse."""
+        if self.current.kind == EOF:
+            return
+        # Si el token actual pertenece al FOLLOW, se omite el no-terminal.
+        if self.current.kind in self.grammar.follow_sets.get(nonterminal, set()):
+            return
+        self.pos += 1
 
 class BottomUpAnalyzer:
-    """Analisis ascendente de pares y reducciones pequenas de sentencias."""
+    """Analisis ascendente local.
+
+    Entradas: texto y tokens.
+    Salida: diagnosticos/correcciones de pares y ';'.
+    Uso: FCCIDEAnalyzer.analyze.
+    """
 
     PAIRS = {"LPAREN": "RPAREN", "LBRACK": "RBRACK", "LBRACE": "RBRACE"}
     REVERSE = {value: key for key, value in PAIRS.items()}
 
     def analyze(self, text: str, tokens: List[Token]) -> Tuple[List[Diagnostic], List[Correction]]:
+        """Entradas: texto/tokens. Salida: errores y correcciones. Uso: IDE."""
         diagnostics: List[Diagnostic] = []
         corrections: List[Correction] = []
         stack: List[Token] = []
@@ -760,10 +653,12 @@ class BottomUpAnalyzer:
             if token.kind == EOF:
                 continue
             if token.kind in self.PAIRS:
+                # Aperturas pendientes: luego deben reducir con su cierre.
                 stack.append(token)
                 continue
             if token.kind in self.REVERSE:
                 if stack and stack[-1].kind == self.REVERSE[token.kind]:
+                    # Cierre compatible: reduce el par superior.
                     stack.pop()
                     continue
                 opener = DISPLAY_BY_TOKEN.get(self.REVERSE[token.kind], self.REVERSE[token.kind])
@@ -781,6 +676,7 @@ class BottomUpAnalyzer:
                 corrections.append(Correction("Eliminar cierre sobrante", f'Quita "{token.lexeme}".', token.start, token.end, ""))
 
         for opener in reversed(stack):
+            # Si queda algo en la pila, falta insertar su cierre.
             closer = self.PAIRS[opener.kind]
             display = DISPLAY_BY_TOKEN.get(closer, closer)
             diagnostics.append(
@@ -800,6 +696,7 @@ class BottomUpAnalyzer:
         return diagnostics, corrections
 
     def _missing_semicolon_corrections(self, text: str, tokens: List[Token], diagnostics: List[Diagnostic]) -> List[Correction]:
+        """Entradas: texto/tokens/diagnosticos. Salida: correcciones ';'. Uso: analyze."""
         corrections: List[Correction] = []
         by_line: Dict[int, List[Token]] = {}
         for token in tokens:
@@ -825,6 +722,7 @@ class BottomUpAnalyzer:
             if first.kind == "FUNC":
                 continue
             if last.kind in {"RPAREN", "RBRACK", "IDENTIFIER", "MAIN", "RET", "CONTINUE", "BREAK", *LITERAL_TOKENS}:
+                # La linea parece cerrada semanticamente, pero no tiene ';'.
                 diagnostics.append(
                     Diagnostic(
                         "ascendente",
@@ -842,18 +740,26 @@ class BottomUpAnalyzer:
 
 
 class FCCIDEAnalyzer:
-    """Fachada usada por la interfaz grafica."""
+    """Fachada del analizador del IDE.
+
+    Entradas: texto y cursor.
+    Salida: AnalysisResult para resaltado, errores y sugerencias.
+    Uso: ide_app.FCCIDE.
+    """
 
     def __init__(self):
+        """Entradas: ninguna. Salida: fases listas. Uso: IDE."""
         self.lexer = FCCInteractiveLexer()
         self.grammar = LL1Grammar()
         self.bottom_up = BottomUpAnalyzer()
 
     def analyze(self, text: str, cursor_offset: int = 0) -> AnalysisResult:
+        """Entradas: codigo y cursor. Salida: AnalysisResult. Uso: ide_app."""
         tokens, lexical_diagnostics = self.lexer.tokenize(text)
         parser = PredictiveParser(tokens, self.grammar)
         syntactic_diagnostics = parser.parse()
         bottom_up_diagnostics, corrections = self.bottom_up.analyze(text, tokens)
+        # Las sugerencias mezclan contexto LL(1), prefijo e identificadores.
         diagnostics = lexical_diagnostics + syntactic_diagnostics + bottom_up_diagnostics
         suggestions = self._suggest(text, tokens, cursor_offset, parser.expected_at_cursor)
 
@@ -867,11 +773,13 @@ class FCCIDEAnalyzer:
         )
 
     def _suggest(self, text: str, tokens: List[Token], cursor_offset: int, expected: Set[str]) -> List[Suggestion]:
+        """Entradas: contexto y esperados LL(1). Salida: sugerencias. Uso: analyze."""
         prefix_match = re.search(r"[A-Za-z_][A-Za-z_0-9]*$", text[:cursor_offset])
         prefix = prefix_match.group(0) if prefix_match else ""
         tokens_before = [token for token in tokens if token.end <= cursor_offset and token.kind != EOF]
         previous = tokens_before[-1] if tokens_before else None
 
+        # Base amplia: keywords, builtins y plantillas comunes.
         candidates: Set[str] = set()
         candidates.update(
             {
@@ -902,8 +810,10 @@ class FCCIDEAnalyzer:
             }
         )
         if expected:
+            # Tokens esperados por la tabla LL(1) cuando el cursor esta en EOF.
             candidates.update(DISPLAY_BY_TOKEN.get(kind, kind) for kind in expected if kind != EOF)
         if previous is None or previous.kind in {"SEMI", "LBRACE", "RBRACE"}:
+            # Inicio de sentencia: conviene sugerir snippets completos.
             candidates.update(
                 [
                     "func void main(){\n    \n}",
@@ -922,6 +832,7 @@ class FCCIDEAnalyzer:
         elif previous.kind == "RET":
             candidates.update(self._known_identifiers(tokens))
         else:
+            # En expresiones se priorizan nombres ya escritos y literales bool.
             candidates.update(self._known_identifiers(tokens))
             candidates.update(["true", "false"])
 
@@ -936,15 +847,16 @@ class FCCIDEAnalyzer:
         return [Suggestion(candidate, self._suggestion_detail(candidate)) for candidate in filtered[:32]]
 
     def _known_identifiers(self, tokens: List[Token]) -> Set[str]:
+        """Entradas: tokens. Salida: identificadores conocidos. Uso: _suggest."""
         identifiers = {token.lexeme for token in tokens if token.kind in {"IDENTIFIER", "MAIN"}}
         return {name for name in identifiers if name}
 
     def _suggestion_detail(self, candidate: str) -> str:
+        """Entradas: candidato. Salida: descripcion corta. Uso: _suggest."""
         snippets = {
             "main": "funcion principal",
             "void": "tipo sin retorno",
             "int": "tipo entero",
-            "float": "tipo real",
             "bool": "tipo booleano",
             "char": "tipo caracter",
             "vault": "memoria segura",

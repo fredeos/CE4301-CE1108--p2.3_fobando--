@@ -1,0 +1,107 @@
+bloques main:
+main_B0:
+  succ: main_while_cond_1
+  t1 = 16
+  n = t1
+  t2 = 2
+  k = t2
+  t3 = 0
+  acumulado = t3
+  t4 = 20
+  t5 = 0
+  x[t5] = t4
+  t6 = 18
+  t7 = 1
+  x[t7] = t6
+  t8 = 22
+  t9 = 2
+  x[t9] = t8
+  t10 = 25
+  t11 = 3
+  x[t11] = t10
+  t12 = 27
+  t13 = 4
+  x[t13] = t12
+  t14 = 24
+  t15 = 5
+  x[t15] = t14
+  t16 = 30
+  t17 = 6
+  x[t17] = t16
+  t18 = 32
+  t19 = 7
+  x[t19] = t18
+  t20 = 29
+  t21 = 8
+  x[t21] = t20
+  t22 = 31
+  t23 = 9
+  x[t23] = t22
+  t24 = 35
+  t25 = 10
+  x[t25] = t24
+  t26 = 33
+  t27 = 11
+  x[t27] = t26
+  t28 = 37
+  t29 = 12
+  x[t29] = t28
+  t30 = 40
+  t31 = 13
+  x[t31] = t30
+  t32 = 38
+  t33 = 14
+  x[t33] = t32
+  t34 = 42
+  t35 = 15
+  x[t35] = t34
+  t36 = 0
+  t37 = x[t36]
+  t38 = 0
+  y[t38] = t37
+  t39 = 1
+  t40 = x[t39]
+  t41 = 1
+  y[t41] = t40
+  t42 = 0
+  t43 = y[t42]
+  t44 = 1
+  t45 = y[t44]
+  t46 = t43 + t45
+  acumulado = t46
+
+main_while_cond_1:
+  pred: main_B0, main_B2
+  succ: main_B2, main_while_end_2
+  t47 = k < n
+  if_false t47 goto main_while_end_2
+
+main_B2:
+  pred: main_while_cond_1
+  succ: main_while_cond_1
+  t48 = x[k]
+  t49 = 1
+  t50 = k - t49
+  t51 = y[t50]
+  t52 = 2
+  t53 = t51 / t52
+  t54 = t48 + t53
+  t55 = 2
+  t56 = k - t55
+  t57 = y[t56]
+  t58 = 4
+  t59 = t57 / t58
+  t60 = t54 - t59
+  y[k] = t60
+  t61 = y[k]
+  t62 = acumulado + t61
+  acumulado = t62
+  t63 = 1
+  t64 = k + t63
+  k = t64
+  goto main_while_cond_1
+
+main_while_end_2:
+  pred: main_while_cond_1
+  respuesta_discreta = acumulado
+  return respuesta_discreta

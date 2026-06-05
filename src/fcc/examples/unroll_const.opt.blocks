@@ -1,0 +1,198 @@
+bloques main:
+main_B0:
+  succ: main_while_cond_1
+  t1_1 = 0
+  k = t1_1
+  t2_1 = 2
+  t3_1 = 0
+  a[t3_1] = t2_1
+  t4_1 = 4
+  t5_1 = 1
+  a[t5_1] = t4_1
+  t6_1 = 6
+  t7_1 = 2
+  a[t7_1] = t6_1
+  t8_1 = 8
+  t9_1 = 3
+  a[t9_1] = t8_1
+  t10_1 = 10
+  t11_1 = 4
+  a[t11_1] = t10_1
+  t12_1 = 12
+  t13_1 = 5
+  a[t13_1] = t12_1
+  t14_1 = 14
+  t15_1 = 6
+  a[t15_1] = t14_1
+  t16_1 = 16
+  t17_1 = 7
+  a[t17_1] = t16_1
+  t18_1 = 1
+  t19_1 = 0
+  b[t19_1] = t18_1
+  t20_1 = 3
+  t21_1 = 1
+  b[t21_1] = t20_1
+  t22_1 = 5
+  t23_1 = 2
+  b[t23_1] = t22_1
+  t24_1 = 7
+  t25_1 = 3
+  b[t25_1] = t24_1
+  t26_1 = 9
+  t27_1 = 4
+  b[t27_1] = t26_1
+  t28_1 = 11
+  t29_1 = 5
+  b[t29_1] = t28_1
+  t30_1 = 13
+  t31_1 = 6
+  b[t31_1] = t30_1
+  t32_1 = 15
+  t33_1 = 7
+  b[t33_1] = t32_1
+
+main_while_cond_1:
+  pred: main_B0, main_B9
+  succ: main_B2, main_while_end_2
+  t34_1 = 8
+  t35_1 = k < t34_1
+  if_false t35_1 goto main_while_end_2
+
+main_B2:
+  pred: main_while_cond_1
+  succ: main_B3, main_while_end_2
+  t36_1 = a[k]
+  t37_1 = b[k]
+  t38_1 = t36_1 + t37_1
+  c[k] = t38_1
+  t39_1 = 1
+  t40_1 = k + t39_1
+  k = t40_1
+  t34_u1 = 8
+  t35_u1 = k < t34_u1
+  if_false t35_u1 goto main_while_end_2
+
+main_B3:
+  pred: main_B2
+  succ: main_B4, main_while_end_2
+  t36_u1 = a[k]
+  t37_u1 = b[k]
+  t38_u1 = t36_u1 + t37_u1
+  c[k] = t38_u1
+  t39_u1 = 1
+  t40_u1 = k + t39_u1
+  k = t40_u1
+  t34_u2 = 8
+  t35_u2 = k < t34_u2
+  if_false t35_u2 goto main_while_end_2
+
+main_B4:
+  pred: main_B3
+  succ: main_B5, main_while_end_2
+  t36_u2 = a[k]
+  t37_u2 = b[k]
+  t38_u2 = t36_u2 + t37_u2
+  c[k] = t38_u2
+  t39_u2 = 1
+  t40_u2 = k + t39_u2
+  k = t40_u2
+  t34_u3 = 8
+  t35_u3 = k < t34_u3
+  if_false t35_u3 goto main_while_end_2
+
+main_B5:
+  pred: main_B4
+  succ: main_B6, main_while_end_2
+  t36_u3 = a[k]
+  t37_u3 = b[k]
+  t38_u3 = t36_u3 + t37_u3
+  c[k] = t38_u3
+  t39_u3 = 1
+  t40_u3 = k + t39_u3
+  k = t40_u3
+  t34_u4 = 8
+  t35_u4 = k < t34_u4
+  if_false t35_u4 goto main_while_end_2
+
+main_B6:
+  pred: main_B5
+  succ: main_B7, main_while_end_2
+  t36_u4 = a[k]
+  t37_u4 = b[k]
+  t38_u4 = t36_u4 + t37_u4
+  c[k] = t38_u4
+  t39_u4 = 1
+  t40_u4 = k + t39_u4
+  k = t40_u4
+  t34_u5 = 8
+  t35_u5 = k < t34_u5
+  if_false t35_u5 goto main_while_end_2
+
+main_B7:
+  pred: main_B6
+  succ: main_B8, main_while_end_2
+  t36_u5 = a[k]
+  t37_u5 = b[k]
+  t38_u5 = t36_u5 + t37_u5
+  c[k] = t38_u5
+  t39_u5 = 1
+  t40_u5 = k + t39_u5
+  k = t40_u5
+  t34_u6 = 8
+  t35_u6 = k < t34_u6
+  if_false t35_u6 goto main_while_end_2
+
+main_B8:
+  pred: main_B7
+  succ: main_B9, main_while_end_2
+  t36_u6 = a[k]
+  t37_u6 = b[k]
+  t38_u6 = t36_u6 + t37_u6
+  c[k] = t38_u6
+  t39_u6 = 1
+  t40_u6 = k + t39_u6
+  k = t40_u6
+  t34_u7 = 8
+  t35_u7 = k < t34_u7
+  if_false t35_u7 goto main_while_end_2
+
+main_B9:
+  pred: main_B8
+  succ: main_while_cond_1
+  t36_u7 = a[k]
+  t37_u7 = b[k]
+  t38_u7 = t36_u7 + t37_u7
+  c[k] = t38_u7
+  t39_u7 = 1
+  t40_u7 = k + t39_u7
+  k = t40_u7
+  goto main_while_cond_1
+
+main_while_end_2:
+  pred: main_B2, main_B3, main_B4, main_B5, main_B6, main_B7, main_B8, main_while_cond_1
+  t41_1 = 0
+  t42_1 = c[t41_1]
+  t43_1 = 1
+  t44_1 = c[t43_1]
+  t45_1 = t42_1 + t44_1
+  t46_1 = 2
+  t47_1 = c[t46_1]
+  t48_1 = t45_1 + t47_1
+  t49_1 = 3
+  t50_1 = c[t49_1]
+  t51_1 = t48_1 + t50_1
+  t52_1 = 4
+  t53_1 = c[t52_1]
+  t54_1 = t51_1 + t53_1
+  t55_1 = 5
+  t56_1 = c[t55_1]
+  t57_1 = t54_1 + t56_1
+  t58_1 = 6
+  t59_1 = c[t58_1]
+  t60_1 = t57_1 + t59_1
+  t61_1 = 7
+  t62_1 = c[t61_1]
+  t63_1 = t60_1 + t62_1
+  resultado_constante = t63_1
+  return resultado_constante

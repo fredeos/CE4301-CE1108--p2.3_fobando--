@@ -9,6 +9,7 @@ func int factorial(int a){
     ret resultado;
 }
 
+
 func int main(){
     ret factorial(8);
 }

@@ -1,0 +1,16 @@
+func main() -> int
+  t1 = 4
+  valor = t1
+  t2 = 1
+  t3 = valor + t2
+  primero = t3
+  t4 = 20
+  valor = t4
+  t5 = 2
+  t6 = valor + t5
+  segundo = t6
+  t7 = 7
+  valor = t7
+  t8 = primero + segundo
+  t9 = t8 + valor
+  return t9

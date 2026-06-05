@@ -1,0 +1,23 @@
+func factorial(a) -> int
+  t1 = 1
+  resultado = t1
+  t2 = 1
+  i = t2
+L1:
+  if i <= a goto L2
+  goto L3
+L2:
+  t4 = resultado * i
+  resultado = t4
+  t5 = 1
+  t6 = i + t5
+  i = t6
+  goto L1
+L3:
+  return resultado
+
+func main() -> int
+  t1 = 8
+  param t1
+  t2 = call factorial, 1
+  return t2
