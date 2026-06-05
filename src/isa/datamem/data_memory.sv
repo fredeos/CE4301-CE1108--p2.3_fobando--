@@ -20,8 +20,10 @@ module data_memory #(
     // + Ouput control signals
     output logic [1:0] ready,
     // + Cache back-feed burst-lines
-    output logic [31:0] burst1 [0:WPL-1], // data burst for block of given RA
-    output logic [31:0] burst2 [0:WPL-1]  // data burst for relative block of given RA (next block)
+    output logic [31:0] burst1_addr,     // burst 1 address
+    output logic [31:0] burst2_addr,     // burst 2 address
+    output logic [WPL-1:0][31:0] burst1, // data burst for block of given RA
+    output logic [WPL-1:0][31:0] burst2  // data burst for relative block of given RA (next block)
 );
 
     // --- Dynamic Parameter Calculation ---
@@ -76,15 +78,7 @@ module data_memory #(
     assign rd_block_idx1 = {rd_word_idx1[ADDR_WIDTH-1:BLOCK_WIDTH], {BLOCK_WIDTH{1'b0}} };
     assign rd_block_idx2 = {rd_word_idx2[ADDR_WIDTH-1:BLOCK_WIDTH], {BLOCK_WIDTH{1'b0}} };
 
-    // --- Combinational logic ---
-    // 1. Write & read byte decodings
-    // + Write
-    logic [7:0] wd_bytes [0:3];
-    assign wd_bytes[0] = WD[7:0];
-    assign wd_bytes[1] = WD[15:8];
-    assign wd_bytes[2] = WD[23:16];
-    assign wd_bytes[3] = WD[31:24];
-
+    // --- Synchronous read (load) ---
     // + Read
     logic [7:0] rd_bytes [0:7];
     assign rd_bytes[0] = RAM[rd_word_idx1][7:0];
@@ -95,66 +89,7 @@ module data_memory #(
     assign rd_bytes[5] = RAM[rd_word_idx2][15:8];
     assign rd_bytes[6] = RAM[rd_word_idx2][23:16];
     assign rd_bytes[7] = RAM[rd_word_idx2][31:24];
-
-    // --- Synchronous write (store) ---
-    // + Write byte selections
-    wire wd_byte1_sel = WBM[0];
-    wire wd_byte2_sel = WBM[1];
-    wire wd_byte3_sel = WBM[2];
-    wire wd_byte4_sel = WBM[3];
-
-    // + Write logic
-    logic [31:0] write_counter;
-    always_ff @(negedge CLK, posedge RST) begin 
-        if (RST) begin
-            write_counter <= '0;
-            ready[1] <= 0;
-        end
-        else if (WE) begin 
-            if (write_counter == (LATENCY-1)) begin 
-                ready[1] <= 1;
-                case (wd_byte_offset)
-                    2'b00: begin
-                        if (wd_byte1_sel) RAM[rd_word_idx1][7:0]   <= wd_bytes[0];
-                        if (wd_byte2_sel) RAM[rd_word_idx1][15:8]  <= wd_bytes[1];
-                        if (wd_byte3_sel) RAM[rd_word_idx1][23:16] <= wd_bytes[2];
-                        if (wd_byte4_sel) RAM[rd_word_idx1][31:24] <= wd_bytes[3];
-                    end
-
-                    2'b01: begin
-                        if (wd_byte1_sel) RAM[rd_word_idx1][15:8]  <= wd_bytes[0];
-                        if (wd_byte2_sel) RAM[rd_word_idx1][23:16] <= wd_bytes[1];
-                        if (wd_byte3_sel) RAM[rd_word_idx1][31:24] <= wd_bytes[2];
-                        if (wd_byte4_sel) RAM[rd_word_idx2][7:0]   <= wd_bytes[3];
-                    end
-
-                    2'b10: begin
-                        if (wd_byte1_sel) RAM[rd_word_idx1][23:16] <= wd_bytes[0];
-                        if (wd_byte2_sel) RAM[rd_word_idx1][31:24] <= wd_bytes[1];
-                        if (wd_byte3_sel) RAM[rd_word_idx2][7:0]   <= wd_bytes[2];
-                        if (wd_byte4_sel) RAM[rd_word_idx2][15:8]  <= wd_bytes[3];
-                    end
-
-                    2'b11: begin
-                        if (wd_byte1_sel) RAM[rd_word_idx1][31:24] <= wd_bytes[0];
-                        if (wd_byte2_sel) RAM[rd_word_idx2][7:0]   <= wd_bytes[1];
-                        if (wd_byte3_sel) RAM[rd_word_idx2][15:8]  <= wd_bytes[2];
-                        if (wd_byte4_sel) RAM[rd_word_idx2][23:16] <= wd_bytes[3];
-                    end
-                endcase
-                write_counter <= '0;
-            end else begin
-                write_counter <= write_counter + 1;
-                ready[1] <= 0;
-            end
-        end
-        else begin
-            write_counter <= '0;
-            ready[1] <= 0;
-        end
-    end
-
-    // --- Synchronous read (load) ---
+    
     // + Read byte selections
     wire rd_byte1_sel = RBM[0];
     wire rd_byte2_sel = RBM[1];
@@ -162,19 +97,26 @@ module data_memory #(
     wire rd_byte4_sel = RBM[3];
 
     // + Read logic
-    logic [31:0] read_counter;
     logic [7:0] read_data [0:3];
     assign RD = {read_data[3], read_data[2], read_data[1], read_data[0]};
+
+    // + Latency simulation
+    logic [31:0] read_counter;
+    wire rd_done = (read_counter == LATENCY-1);
     always_ff @(posedge CLK, posedge RST) begin 
         if (RST) begin
             read_counter <= '0;
             ready[0] <= 0;
             read_data[0] <= '0; read_data[1] <= '0; read_data[2] <= '0; read_data[3] <= '0;
-        end
-        else if (RE) begin 
-            if (read_counter == (LATENCY-1)) begin 
-                ready[0] <= 1;
-                read_data[0] <= '0; read_data[1] <= '0; read_data[2] <= '0; read_data[3] <= '0;
+        end else begin
+            // >> Counter update logic <<
+            if (RE && rd_done) read_counter <= '0;
+            else if (RE) read_counter <= read_counter + 1;
+            ready[0] <= rd_done;
+            // >> Read logic <<
+            // Read data
+            read_data[0] <= '0; read_data[1] <= '0; read_data[2] <= '0; read_data[3] <= '0;
+            if (RE && rd_done) begin 
                 case (rd_byte_offset)
                     2'b00: begin 
                         if (rd_byte1_sel) read_data[0] <= rd_bytes[0];
@@ -204,16 +146,81 @@ module data_memory #(
                         if (rd_byte4_sel) read_data[3] <= rd_bytes[6];
                     end
                 endcase
-                read_counter <= '0;
-            end else begin
-                read_counter <= read_counter + 1;
-                ready[0] <= 0;
-                read_data[0] <= '0; read_data[1] <= '0; read_data[2] <= '0; read_data[3] <= '0;
+            end
+            // Read burst
+            burst1_addr <= (RE && rd_done) ? {RA[31:ADDR_WIDTH+2], rd_block_idx1, 2'b00} : '0;
+            burst2_addr <= (RE && rd_done) ? {RA[31:ADDR_WIDTH+2], rd_block_idx2, 2'b00} : '0; 
+            for (int i = 0; i < WPL; i++) begin
+                if (RE && rd_done) begin 
+                    burst1[i] <= RAM[rd_block_idx1+i];
+                    burst2[i] <= RAM[rd_block_idx2+i];
+                end else begin 
+                    burst1[i] <= '0;
+                    burst2[i] <= '0;
+                end
             end
         end
-        else begin
-            read_counter <= '0;
-            ready[0] <= 0;
+    end
+
+    // --- Synchronous write (store) ---
+    // + Write bytes
+    logic [7:0] wd_bytes [0:3];
+    assign wd_bytes[0] = WD[7:0];
+    assign wd_bytes[1] = WD[15:8];
+    assign wd_bytes[2] = WD[23:16];
+    assign wd_bytes[3] = WD[31:24];
+
+    // + Write byte selections
+    wire wd_byte1_sel = WBM[0];
+    wire wd_byte2_sel = WBM[1];
+    wire wd_byte3_sel = WBM[2];
+    wire wd_byte4_sel = WBM[3];
+
+    // + Latency simulation
+    logic [31:0] write_counter;
+    wire wd_done = (write_counter == LATENCY-1);
+    always_ff @(negedge CLK, posedge RST) begin 
+        if (RST) begin
+            write_counter <= '0;
+            ready[1] <= 0;
+        end else begin
+            // >> Counter update logic <<
+            if (WE && wd_done) write_counter <= '0;
+            else if (WE) write_counter <= write_counter + 1;
+            ready[1] <= wd_done;
+            // >> Write logic <<
+            if (WE && wd_done) begin
+                case (wd_byte_offset)
+                    2'b00: begin
+                        if (wd_byte1_sel) RAM[rd_word_idx1][7:0]   <= wd_bytes[0];
+                        if (wd_byte2_sel) RAM[rd_word_idx1][15:8]  <= wd_bytes[1];
+                        if (wd_byte3_sel) RAM[rd_word_idx1][23:16] <= wd_bytes[2];
+                        if (wd_byte4_sel) RAM[rd_word_idx1][31:24] <= wd_bytes[3];
+                    end
+
+                    2'b01: begin
+                        if (wd_byte1_sel) RAM[rd_word_idx1][15:8]  <= wd_bytes[0];
+                        if (wd_byte2_sel) RAM[rd_word_idx1][23:16] <= wd_bytes[1];
+                        if (wd_byte3_sel) RAM[rd_word_idx1][31:24] <= wd_bytes[2];
+                        if (wd_byte4_sel) RAM[rd_word_idx2][7:0]   <= wd_bytes[3];
+                    end
+
+                    2'b10: begin
+                        if (wd_byte1_sel) RAM[rd_word_idx1][23:16] <= wd_bytes[0];
+                        if (wd_byte2_sel) RAM[rd_word_idx1][31:24] <= wd_bytes[1];
+                        if (wd_byte3_sel) RAM[rd_word_idx2][7:0]   <= wd_bytes[2];
+                        if (wd_byte4_sel) RAM[rd_word_idx2][15:8]  <= wd_bytes[3];
+                    end
+
+                    2'b11: begin
+                        if (wd_byte1_sel) RAM[rd_word_idx1][31:24] <= wd_bytes[0];
+                        if (wd_byte2_sel) RAM[rd_word_idx2][7:0]   <= wd_bytes[1];
+                        if (wd_byte3_sel) RAM[rd_word_idx2][15:8]  <= wd_bytes[2];
+                        if (wd_byte4_sel) RAM[rd_word_idx2][23:16] <= wd_bytes[3];
+                    end
+                endcase
+            end
         end
     end
+
 endmodule

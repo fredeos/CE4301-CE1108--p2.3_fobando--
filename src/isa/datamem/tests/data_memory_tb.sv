@@ -7,13 +7,17 @@ module data_memory_tb();
     logic [3:0] bm;
     logic [31:0] addr, wd, rd;
 
+    logic [31:0] burst_addr [0:1];
+    logic [1:0][31:0] burst1, burst2;
+
     // Instancia del módulo (DUT)
     data_memory #(.SIZE(128), .LATENCY(8), .WPL(2)) _dut (
         .CLK(clk), .RST(rst),
         .WE(we), .WBM(bm), .WA(addr), .WD(wd),
         .RE(re), .RBM(bm), .RA(addr), .RD(rd),
         .ready({w_ready, r_ready}),
-        .burst1(), .burst2()
+        .burst1_addr(burst_addr[0]), .burst2_addr(burst_addr[1]),
+        .burst1(burst1), .burst2(burst2)
     );
 
     // Reloj a 100MHz
@@ -81,6 +85,11 @@ module data_memory_tb();
                 #10;
                 if (r_ready) $display("[%0d] End of search! Data found: %h", i+1, rd);
                 else $display("[%0d] Looking for data on memory...", i+1);
+            end
+            if (r_ready) begin 
+                $display("[OUTPUT BURST] Content found! A1[0x%0d], A2[0x%0d]", burst_addr[0], burst_addr[1]);
+                for (int i = 0; i < 2; i++) $display("BURST_1[%0d] = %h", i, burst1[i]);
+                for (int i = 0; i < 2; i++) $display("BURST_2[%0d] = %h", i, burst2[i]);
             end
             addr = '0;
             wd = '0;

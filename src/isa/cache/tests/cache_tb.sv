@@ -2,11 +2,20 @@ module cache_tb ();
 
     localparam LAT = 2;
 
-    logic clk, rst;
+    logic clk, rst, clr;
     logic we, re;
-    logic w_hit, r_hit, w_ready, r_ready;
+    logic w_hit, r_hit, w_ready, r_ready, locked;
     logic [3:0] bm;
     logic [31:0] addr, wd, rd;
+
+    logic valid_burst;
+    logic [31:0] in_burst_addr [0:1];
+    logic [1:0][31:0] in_burst1;
+    logic [1:0][31:0] in_burst2;
+
+    logic [31:0] out_burst_addr [0:1];
+    logic [1:0][31:0] out_burst1;
+    logic [1:0][31:0] out_burst2;
 
     logic queue, dequeue;
     logic [3:0]  wbuff_bm_in, wbuff_bm_out;
@@ -15,10 +24,21 @@ module cache_tb ();
     always #5 clk = ~clk;
 
     cache #(.SIZE(32), .WPL(2), .WAYS(2), .LATENCY(LAT)) _dut (
-        .CLK(clk), .RST(rst),
+        // + Synchronous signals
+        .CLK(clk), .RST(rst), .CLR(clr),
+        // + Write signals
         .WE(we), .WBM(bm), .WA(addr), .WD(wd),
+        // + Read signals
         .RE(re), .RBM(bm), .RA(addr), .RD(rd),
-        .hit({w_hit, r_hit}), .ready({w_ready, r_ready}),
+        // + Control signals
+        .hit({w_hit, r_hit}), .ready({w_ready, r_ready}), .locked(locked),
+        // + Miss logic signals
+        .valid_burst(valid_burst),
+        .in_addr_burst1(in_burst_addr[0]), .in_addr_burst2(in_burst_addr[1]),
+        .in_burst1(in_burst1), .in_burst2(in_burst2),
+        .out_addr_burst1(out_burst_addr[0]), .out_addr_burst2(out_burst_addr[1]),
+        .out_burst1(out_burst1), .out_burst2(out_burst2),
+        // + Write-through signals
         .queue(queue), .dequeue(),
         .pWBM(wbuff_bm_in), .pWA(wbuff_addr_in), .pWD(wbuff_wd_in)  
     );
@@ -38,10 +58,16 @@ module cache_tb ();
         $display("[Inicio del testbench]");
 
         // --- Inicialización de señales ---
+        valid_burst = 0;
+        in_burst_addr[0] = '0; in_burst_addr[1] = '0;
+        for (int i = 0; i < 2; i++) begin
+            in_burst1[i] = '0;
+            in_burst2[i] = '0;
+        end
         addr = '0; wd = '0;
         bm  = 4'b0000;
         re = 0; we = 0;
-        clk = 0; rst = 1;
+        clk = 0; rst = 1; clr = 0;
         dequeue = 0;
         #10;
         rst = 0;
@@ -51,21 +77,27 @@ module cache_tb ();
         // 1. Lectura de palabra completa
         $display("\n<< Lectura de palabra completa >>");
         task_read(32'd0, 4'b1111);
+        task_check_cache(1'b0);
         // 2. Lectura de media palabra
         $display("\n<< Lectura de media palabra >>");
         task_read(32'd4, 4'b0011);
+        task_check_cache(1'b0);
         // 3. Lectura de byte
         $display("\n<< Lectura de byte >>");
         task_read(32'd6, 4'b0001);
+        task_check_cache(1'b0);
         // 4. Lectura desfasada en mismo bloque
         $display("\n<< Lectura desfasada en mismo bloque >>");
         task_read(32'd2, 4'b1111);
+        task_check_cache(1'b0);
         // 5. Lectura desfasada en bloques distintos
         $display("\n<< Lectura desfasada en bloques distintos >>");
         task_read(32'd7, 4'b0111);
+        task_check_cache(1'b0);
         // 6. Lectura en bloque invalido
         $display("\n<< Lectura en bloque invalido >>");
         task_read(32'd28, 4'b0111);
+        task_check_cache(1'b0);
 
         // --- Pruebas de escritura ---
         $display("\n-------------------[Pruebas de escritura]-------------------");
@@ -74,33 +106,41 @@ module cache_tb ();
         $display("\n<< Escritura de palabra completa >>");
         task_write(32'd16, 32'd1024, 4'b1111);
         task_read(32'd16, 4'b1111);
+        task_check_cache(1'b1);
         task_check_writebuf(1'b0);
         // 2. Escritura de media palabra
         $display("\n<< Escritura de media palabra >>");
         task_write(32'd20, 32'hAAAAAAAA, 4'b0011);
         task_read(32'd20, 4'b1111);
+        task_check_cache(1'b0);
         task_check_writebuf(1'b0);
         // 3. Escritura de byte
         $display("\n<< Escritura de byte >>");
         task_write(32'd23, 32'd11, 4'b0001);
         task_read(32'd20, 4'b1111);
+        task_check_cache(1'b0);
         task_check_writebuf(1'b1);
         // 4. Escritura desfasada en mismo bloque
         $display("\n<< Escritura desfasada en mismo bloque>>");
         task_write(32'd18, 32'hFFFF1111, 4'b0111);
         task_read(32'd16, 4'b1111);
+        task_check_cache(1'b0);
         task_read(32'd20, 4'b1111);
+        task_check_cache(1'b0);
         task_check_writebuf(1'b1);
         // 5. Escritura desfasada en bloques distintos
         $display("\n<< Escritura desfasada en bloques distintos >>");
         task_write(32'd6, 32'hdeadbeef, 4'b1111);
         task_read(32'd4, 4'b1111);
+        task_check_cache(1'b0);
         task_read(32'd8, 4'b1111);
+        task_check_cache(1'b0);
         task_check_writebuf(1'b1);
         // 6. Escritura en bloque invalido
         $display("\n<< Escritura en bloque invalido >>");
         task_write(32'd28, 32'd67, 4'b1111);
         task_read(32'd28, 4'b1111);
+        task_check_cache(1'b0);
         task_check_writebuf(1'b1);
 
         // --- Volcado de memoria ---
@@ -151,6 +191,20 @@ module cache_tb ();
             re = 1'b0; we = 1'b0;
             bm = 4'b0000;
             #5;
+        end
+    endtask
+
+    task task_check_cache(input unlock);
+        begin
+            $display("+ TASK_CHECK_CACHE: LOCK_STATUS[%b], HIT[%b], RDY[%b]", locked, r_hit, r_ready);
+            if (r_hit && r_ready) begin
+                $display("[OUTPUT BURST] Hit detected: A1[0x%0d], A2[0x%0d]", out_burst_addr[0], out_burst_addr[1]);
+                for (int i = 0; i < 2; i++) $display("BURST_1[%0d] = %h", i, out_burst1[i]);
+                for (int i = 0; i < 2; i++) $display("BURST_2[%0d] = %h", i, out_burst2[i]);
+            end
+            clr = unlock;
+            #10;
+            clr = 1'b0;
         end
     endtask
 
