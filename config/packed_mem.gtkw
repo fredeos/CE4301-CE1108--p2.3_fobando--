@@ -1,0 +1,45 @@
+[*]
+[*] GTKWave Analyzer v3.3.100 (w)1999-2019 BSI
+[*] Sun Jun 07 15:57:04 2026
+[*]
+[dumpfile] "B:\workbench\repos\CE4301-CE1108--p2.3_fobando--\config\gen\packed_mem.vcd"
+[savefile] "B:\workbench\repos\CE4301-CE1108--p2.3_fobando--\config\packed_mem.gtkw"
+[timestart] 94
+[size] 1000 600
+[pos] -1 -1
+*-4.974262 133 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
+[treeopen] packed_mem_tb.
+[treeopen] packed_mem_tb._mem.
+[sst_width] 197
+[signals_width] 242
+[sst_expanded] 1
+[sst_vpaned_height] 153
+@28
+packed_mem_tb._mem.CLK
+packed_mem_tb._mem.RST
+packed_mem_tb._mem.state[2:0]
+packed_mem_tb._mem.prev_state[2:0]
+packed_mem_tb._mem.ready
+@22
+packed_mem_tb._mem.RD[31:0]
+@28
+packed_mem_tb._mem.r_hit[1:0]
+packed_mem_tb._mem.r_rdy[2:0]
+packed_mem_tb._mem.L1_fml
+packed_mem_tb._mem.L1_RE
+packed_mem_tb._mem.locked[1:0]
+packed_mem_tb._mem._l1_dut.rd_hits1[1:0]
+@22
+packed_mem_tb._mem._l1_dut.rd_word_idx1[29:0]
+packed_mem_tb.addr[31:0]
+@28
+packed_mem_tb._mem._l1_dut.rd_set1
+packed_mem_tb._mem._l1_dut.rd_way1
+@22
+packed_mem_tb._mem._l1_dut.rd_tag1[27:0]
+@28
+packed_mem_tb._mem._l1_dut.rd_block_offset1
+@29
+packed_mem_tb._mem._l1_dut.rd_hits1[1:0]
+[pattern_trace] 1
+[pattern_trace] 0

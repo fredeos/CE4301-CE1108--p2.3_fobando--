@@ -1,0 +1,241 @@
+// Memory hierarchy compact module for 32 bit architecture (data only)
+// > L1 Cache: associative cache memory
+//  + Replacement policy: FIFO
+//  + Write policy: write-through (FIFO write buffer)
+// > l2 Cache: associative cache memory
+//  + Replacement policy: FIFO
+//  + Write policy: write-through (FIFO write buffer)
+// > Main memory
+module packed_mem #(
+    parameter int L1_LATENCY  = 1, // L1 cache latency simulation (CLK cycles)    [default: 1(min)]
+    parameter int L2_LATENCY  = 4, // L2 cache latency simulation (CLK cycles)    [default: 4]
+    parameter int MEM_LATENCY = 8, // Data memory latency simulation (CLK cycles) [default: 8]
+    parameter int L1_SIZE  = 32,   // L1 cache size (in bytes)                    [default: 32 bytes]
+    parameter int L2_SIZE  = 64,   // L2 cache size (in bytes)                    [default: 64 bytes]
+    parameter int MEM_SIZE = 256,  // Data memory size (in bytes)                 [default: 256 bytes]
+    parameter int L1_ASO   = 2,    // L1 associatiavity (number of ways)          [default: 2(min)]
+    parameter int L2_ASO   = 4,    // l2 associatiavity (number of ways)          [default: 4]
+    parameter int WPL = 2          // Memory-wide words-per-line                  [default: 2(min)]
+)(
+    // + Global signals
+    input  logic CLK,
+    input  logic RST,
+    // + Memory signals
+    input  logic WE,        // write-enable
+    input  logic [3:0]  BM, // byte-mode (byte selection)
+    input  logic [31:0] A,  // read/write address
+    input  logic [31:0] WD, // write data
+    output logic [31:0] RD, // read data
+    // + Output control signals
+    output logic ready,
+    output logic [1:0] read_miss,  // [0]: L1, [1]: L2
+    output logic [1:0] write_miss  // [0]: L1, [1]: L2
+);
+    // --- Internal signals ---
+    // 1. Control signals
+    logic [1:0] L1_hits, L2_hits; // (READ&WRITE HITS) [0]: read, [1]: write
+    logic [1:0] locked;           // ($ LOCK STATUS)   [0]: L1,   [1]: L2
+    logic [1:0] L1_rdy, L2_rdy;   // (READY STATUS)    [0]: read, [1]: write
+    logic [1:0] M_rdy;            // (READY STATUS)    [0]: read, [1]: write
+
+    wire L1_read_hit  = L1_hits[0] & L1_rdy[0]; // true hit
+    wire L1_write_hit = L1_hits[1] & L1_rdy[1]; // true hit
+
+    wire L1_read_miss  = ~L1_hits[0] & L1_rdy[0]; // true miss
+    wire L1_write_miss = ~L1_hits[1] & L1_rdy[1]; // true miss
+
+    wire L2_read_hit  = L2_hits[0] & L2_rdy[0]; // true hit
+    wire L2_write_hit = L2_hits[1] & L2_rdy[1]; // true hit
+
+    wire L2_read_miss  = ~L2_hits[0] & L2_rdy[0]; // true miss
+    wire L2_write_miss = ~L2_hits[1] & L2_rdy[1]; // true miss
+
+    assign read_miss = {L2_read_miss, L1_read_miss};
+    assign write_miss = {L2_write_miss, L1_write_miss};
+
+    // 2. Data signals
+    logic [31:0] read_data [0:2]; // (READ DATA) [0]: L1, [1]: L2, [2]: MEM
+
+    // 3. Burst signals
+    logic [31:0] burst_addr [0:1];       // [0]: burst1, [1]: burst2
+    logic [WPL-1:0][31:0] burst [0:1];   // [0]: burst1, [1]: burst2
+
+    logic [31:0] L2_burst_addr [0:1];    // [0]: burst1, [1]: burst2
+    logic [WPL-1:0][31:0] L2_burst [0:1];// [0]: burst1, [1]: burst2
+
+    logic [31:0] M_burst_addr [0:1];     // [0]: burst1, [1]: burst2
+    logic [WPL-1:0][31:0] M_burst [0:1]; // [0]: burst1, [1]: burst2
+
+    // 4. Write-through buffer signals
+    logic [1:0] queue, dequeue; // [0]: L1, [1]: L2
+    logic [1:0] valid, full;    // [0]: L1, [1]: L2
+
+    assign dequeue[1] = M_rdy[1];
+
+    logic [3:0]  L1_bm_L2   [0:1]; // (L1-L2 byte mode) [0]: input, [1]: output
+    logic [31:0] L1_addr_L2 [0:1]; // (L1-L2 address)   [0]: input, [1]: output
+    logic [31:0] L1_wd_L2   [0:1]; // (L1-L2 write data)[0]: input, [1]: output
+
+    logic [3:0]  L2_bm_M   [0:1]; // (L2-M byte mode) [0]: input, [1]: output
+    logic [31:0] L2_addr_M [0:1]; // (L2-M address)   [0]: input, [1]: output
+    logic [31:0] L2_wd_M   [0:1]; // (L2-M write data)[0]: input, [1]: output
+
+    // --- Memory access FSM ---
+    // NOTE #1: This finite state machine allows controlling the memory for initiating data reading
+    // and filling missing lines (miss penalty)
+    // NOTE #2: Writing on memory is controlled by the write buffers which handle propagating data
+    // to higher memory levels
+    logic [2:0] state, prev_state;
+    always_ff @(posedge CLK, posedge RST) begin 
+        if (RST) begin
+            ready <= 1'b0;
+            RD <= '0;
+            burst_addr[0] <= '0;
+            burst_addr[1] <= '0;
+            for (int i = 0; i < WPL; i++) begin 
+                burst[0][i] <= '0;
+                burst[1][i] <= '0;
+            end
+            state <= 3'b000;
+            prev_state <= 3'b000;
+        end else begin
+            case (state)
+                3'b000: begin // Search on L1
+                    ready <= L1_read_hit;
+                    RD <= read_data[0];
+                    if (L1_read_miss) state <= 3'b001; // go-to L2
+                end
+
+                3'b001: begin // Search on L2
+                    ready <= 1'b0;
+                    RD <= read_data[1];
+                    burst_addr[0] <= L2_burst_addr[0];
+                    burst_addr[1] <= L2_burst_addr[1];
+                    for (int i = 0; i < WPL; i++) begin 
+                        burst[0][i] <= L2_burst[0][i];
+                        burst[1][i] <= L2_burst[1][i];
+                    end
+                    if (L2_read_miss) state <= 3'b010;     // go-to M
+                    else if (L2_read_hit) state <= 3'b011; // fill missing lines on L1
+                end
+
+                3'b010: begin // Search on M
+                    ready <= 1'b0;
+                    RD <= read_data[2];
+                    burst_addr[0] <= M_burst_addr[0];
+                    burst_addr[1] <= M_burst_addr[1];
+                    for (int i = 0; i < WPL; i++) begin 
+                        burst[0][i] <= M_burst[0][i];
+                        burst[1][i] <= M_burst[1][i];
+                    end
+                    if (M_rdy[0]) state <= 3'b100; // fill missing lines on L2 and L1
+                end
+
+                3'b011: begin // L1 miss penalty (fill missing lines)
+                    ready <= 1'b1;
+                    state <= 3'b000; // go back to initial state
+                end
+
+                3'b100: begin // L2 miss penalty (fill missing lines)
+                    ready <= 1'b0;
+                    state <= 3'b011; // fill missig lines on L1
+                end
+
+                default: begin
+                    ready <= 1'b0;
+                    RD <= '0;
+                    state <= 3'b000;
+                end
+            endcase
+            prev_state <= state;
+        end
+    end
+    // 1. Set read enable bits
+    wire L1_RE = (state == 3'b000);
+    wire L2_RE = (state == 3'b001);
+    wire M_RE  = (state == 3'b010);
+
+    // 2. Set burst valid bits
+    wire L1_fml = (state == 3'b011); // fill missing lines for L1
+    wire L2_fml = (state == 3'b100); // fill missing lines for L2
+
+    // --- L1 Cache ---
+    // + Cache module
+    cache #(.SIZE(L1_SIZE), .WPL(WPL), .WAYS(L1_ASO), .LATENCY(L1_LATENCY)) _l1_dut (
+        // + Sequential logic signals
+        .CLK(CLK), .RST(RST), .CLR(1'b0), .force_unlock(1'b0),
+        // + Write signals
+        .WE(WE), .WBM(BM), .WA(A), .WD(WD),
+        // + Read signals
+        .RE(L1_RE), .RBM(BM), .RA(A), .RD(read_data[0]),
+        // + Control signals
+        .hit(L1_hits), .ready(L1_rdy), .locked(locked[0]),
+        // + Input  burst signals
+        .valid_burst(L1_fml),
+        .in_addr_burst1(burst_addr[0]), .in_addr_burst2(burst_addr[1]),
+        .in_burst1(burst[0]), .in_burst2(burst[1]),
+        // + Output burst signals
+        .out_addr_burst1(), .out_addr_burst2(),
+        .out_burst1(), .out_burst2(),
+        // + Write-through signals
+        .queue(queue[0]), .dequeue(),
+        .pWBM(L1_bm_L2[0]), .pWA(L1_addr_L2[0]), .pWD(L1_wd_L2[0])
+    );
+
+    // + Write buffer L1-L2
+    writebuf #(.size(6)) _l1_writebuf (
+        .CLK(CLK), .RST(RST),
+        .queue(queue[0]), .dequeue(dequeue[0]),
+        .addr_in(L1_addr_L2[0]), .data_in(L1_wd_L2[0]), .bm_in(L1_bm_L2[0]),
+        .addr_out(L1_addr_L2[1]), .data_out(L1_wd_L2[1]), .bm_out(L1_bm_L2[1]),
+        .valid(valid[0]), .hold(full[0])
+    );
+
+    // --- L2 Cache ---
+    // + Cache module
+    cache #(.SIZE(L2_SIZE), .WPL(WPL), .WAYS(L2_ASO), .LATENCY(L2_LATENCY)) _l2_dut (
+        // + Sequential logic signals
+        .CLK(CLK), .RST(RST), .CLR(1'b0), .force_unlock(1'b0),
+        // + Write signals
+        .WE(valid[0]), .WBM(L1_bm_L2[1]), .WA(L1_addr_L2[1]), .WD(L1_wd_L2[1]),
+        // + Read signals
+        .RE(L2_RE), .RBM(BM), .RA(A), .RD(read_data[1]),
+        // + Control signals
+        .hit(L2_hits), .ready(L2_rdy), .locked(locked[1]),
+        // + Input  burst signals
+        .valid_burst(L2_fml),
+        .in_addr_burst1(burst_addr[0]), .in_addr_burst2(burst_addr[1]),
+        .in_burst1(burst[0]), .in_burst2(burst[1]),
+        // + Output burst signals
+        .out_addr_burst1(L2_burst_addr[0]), .out_addr_burst2(L2_burst_addr[1]),
+        .out_burst1(L2_burst[0]), .out_burst2(L2_burst[1]),
+        // + Write-through signals
+        .queue(queue[1]), .dequeue(dequeue[0]),
+        .pWBM(L2_bm_M[0]), .pWA(L2_addr_M[0]), .pWD(L2_wd_M[0])
+    );
+
+    // + Write buffer L2-M
+    writebuf #(.size(6)) _l2_writebuf (
+        .CLK(CLK), .RST(RST),
+        .queue(queue[1]), .dequeue(dequeue[1]),
+        .addr_in(L2_addr_M[0]), .data_in(L2_wd_M[0]), .bm_in(L2_bm_M[0]),
+        .addr_out(L2_addr_M[1]), .data_out(L2_wd_M[1]), .bm_out(L2_bm_M[1]),
+        .valid(valid[1]), .hold(full[1])
+    );
+
+    // --- Memory ---
+    data_memory #(.SIZE(MEM_SIZE), .LATENCY(MEM_LATENCY), .WPL(WPL)) _mem_dut (
+        // + Sequential logic signals
+        .CLK(CLK), .RST(RST),
+        // + Write signals
+        .WE(valid[1]), .WBM(L2_bm_M[1]), .WA(L2_addr_M[1]), .WD(L2_wd_M[1]),
+        // + Read signals
+        .RE(M_RE), .RBM(BM), .RA(A), .RD(read_data[2]),
+        // + Control signals
+        .ready(M_rdy),
+        // + Output burst signals
+        .burst1_addr(M_burst_addr[0]), .burst2_addr(M_burst_addr[1]),
+        .burst1(M_burst[0]), .burst2(M_burst[1])
+    );
+
+endmodule

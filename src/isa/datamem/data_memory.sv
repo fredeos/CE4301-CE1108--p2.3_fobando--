@@ -74,9 +74,9 @@ module data_memory #(
     assign wd_word_idx2 = wd_word_idx1 + 1;
 
     // 3. Extract the index of data block start for burst retrieval
-    logic [ADDR_WIDTH-1:0] rd_block_idx1, rd_block_idx2;
-    assign rd_block_idx1 = {rd_word_idx1[ADDR_WIDTH-1:BLOCK_WIDTH], {BLOCK_WIDTH{1'b0}} };
-    assign rd_block_idx2 = {rd_word_idx2[ADDR_WIDTH-1:BLOCK_WIDTH], {BLOCK_WIDTH{1'b0}} };
+    logic [29:0] rd_block_idx1, rd_block_idx2;
+    assign rd_block_idx1 = RA[31:2];
+    assign rd_block_idx2 = rd_block_idx1 + 1;
 
     // --- Synchronous read (load) ---
     // + Read
@@ -108,14 +108,20 @@ module data_memory #(
             read_counter <= '0;
             ready[0] <= 0;
             read_data[0] <= '0; read_data[1] <= '0; read_data[2] <= '0; read_data[3] <= '0;
+            burst1_addr <= '0;
+            burst2_addr <= '0;
+            for (int i = 0; i < WPL; i++) begin
+                burst1[i] <= '0;
+                burst2[i] <= '0;
+            end
         end else begin
             // >> Counter update logic <<
             if (RE && rd_done) read_counter <= '0;
             else if (RE) read_counter <= read_counter + 1;
+            else if (!RE)read_counter <= '0;
             ready[0] <= rd_done;
             // >> Read logic <<
             // Read data
-            read_data[0] <= '0; read_data[1] <= '0; read_data[2] <= '0; read_data[3] <= '0;
             if (RE && rd_done) begin 
                 case (rd_byte_offset)
                     2'b00: begin 
@@ -146,17 +152,12 @@ module data_memory #(
                         if (rd_byte4_sel) read_data[3] <= rd_bytes[6];
                     end
                 endcase
-            end
-            // Read burst
-            burst1_addr <= (RE && rd_done) ? {RA[31:ADDR_WIDTH+2], rd_block_idx1, 2'b00} : '0;
-            burst2_addr <= (RE && rd_done) ? {RA[31:ADDR_WIDTH+2], rd_block_idx2, 2'b00} : '0; 
-            for (int i = 0; i < WPL; i++) begin
-                if (RE && rd_done) begin 
+                // Read bursts
+                burst1_addr <= {rd_block_idx1[29:BLOCK_WIDTH], {BLOCK_WIDTH+2{1'b0}}};
+                burst2_addr <= {rd_block_idx2[29:BLOCK_WIDTH], {BLOCK_WIDTH+2{1'b0}}};
+                for (int i = 0; i < WPL; i++) begin
                     burst1[i] <= RAM[rd_block_idx1+i];
                     burst2[i] <= RAM[rd_block_idx2+i];
-                end else begin 
-                    burst1[i] <= '0;
-                    burst2[i] <= '0;
                 end
             end
         end
