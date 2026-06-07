@@ -12,7 +12,6 @@ PROJECT_ROOT = Path(__file__).resolve().parent
 SRC_PATH = PROJECT_ROOT / "src"
 if str(SRC_PATH) not in sys.path:
     sys.path.insert(0, str(SRC_PATH))
-
 from assembly_generator import AssemblyGenerator
 from ast_json import derive_ast_json_output_path, write_ast_json
 from asm_parser import parse_assembly_text
