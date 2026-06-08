@@ -12,8 +12,7 @@ module cache #(
     // + Sequential logic inputs
     input  logic CLK,        // clock signal pulse
     input  logic RST,        // reset module
-    input  logic CLR,        // clear
-    input  logic force_unlock, // force unlock the module for reading (ignore misses)
+    input  logic ignore,     // ignore misses
     // + Write logic signals
     input  logic WE,         // write enable
     input  logic [3:0]  WBM, // write byte mode (byte selection)
@@ -29,7 +28,7 @@ module cache #(
     output logic [1:0] ready, // cache ready
     output logic locked,      // cache locked (only for reading)
     // + Miss logic input signals
-    input  logic valid_burst,
+    input  logic fill,
     input  logic [31:0] in_addr_burst1,
     input  logic [31:0] in_addr_burst2,
     input  logic [WPL-1:0][31:0] in_burst1,
@@ -242,29 +241,47 @@ end
 logic [31:0] read_counter;
 wire rd_done = (read_counter == LATENCY-1);
 
-// 8. Flip-Flop register (reading)
+// 8. Miss logic FSM
+// NOTE #1: this FSM is necessary for controlling the reading behavior of the cache
+// whenever a miss is detected. It relies heavily on using the output signal 'locked'.
+// The FSM only has 2 states: locked (locked = 1) and unlocked (locked = 0)
+logic [1:0] line_is_filled;
+logic [1:0] miss;
+logic [31:0] MA1, MA2; // Miss Address 1 & 2
+
+wire miss1_complete = ~miss[0] | line_is_filled[0];
+wire miss2_complete = ~miss[1] | line_is_filled[1];
+
+// 9. Flip-Flop register (reading)
 wire rd_post_results = RE & rd_done & rd_pre_hit;
+wire rd_post_misses = RE & rd_done & ~rd_pre_hit;
+
 always_ff @(posedge CLK, posedge RST) begin
     if (RST) begin
         // Reset logic
         read_counter <= '0;
         ready[0] <= '0; hit[0] <= '0;
         RD <= '0;
+
         out_addr_burst1 <= '0;
         out_addr_burst2 <= '0;
         for (int i = 0; i < WPL; i++) begin 
             out_burst1[i] <= '0;
             out_burst2[i] <= '0;
         end
+
+        miss <= '0;
+        MA1 <= '0; MA2 <= '0;
+        locked <= 1'b0;
     end else if (!locked) begin // Unlocked cache behavior
         // >> Counter update logic <<
         if (RE) begin 
-            if (rd_done) read_counter <= '0;       // searching complete
+            if (rd_done) read_counter <= '0;       // search complete
             else read_counter <= read_counter + 1; // standby (searching)
         end else read_counter <= '0;               // idle (not searching)
         // >> Post results <<
         ready[0] <= rd_done & RE;
-        hit[0] <= rd_pre_hit;
+        hit[0] <= rd_pre_hit & RE;
         // >> Read logic <<
         if (rd_post_results) begin // post results
             // Read data
@@ -277,67 +294,30 @@ always_ff @(posedge CLK, posedge RST) begin
                 out_burst2[i] <= data[rd_set[1]][rd_way[1]][i];
             end
         end
-    end else if (locked) begin
-
-    end
-end
-
-// 9. Miss logic FSM
-logic [1:0] miss_state;
-logic [1:0] line_is_filled;
-logic [1:0] miss;
-logic [31:0] MA1, MA2; // Miss Address 1 & 2
-
-wire miss1_complete = ~miss[0] | line_is_filled[0];
-wire miss2_complete = ~miss[1] | line_is_filled[1];
-
-// 10. Flip-flop register (miss logic)
-wire rd_post_misses = RE & rd_done & ~rd_pre_hit;
-always_ff @(posedge CLK, posedge RST) begin 
-    if (RST || CLR) begin 
-        miss_state <= '0;
-        miss <= '0;
-        MA1 <= '0; MA2 <= '0;
-        locked <= 1'b0;
-    end else begin 
-        // >>> Miss logic FSM <<<
-        // NOTE #1: This finite state machine is useful for detecting and solving read misses
-        // This FSM complements itself with writing logic for cache line(burst) filling
-        case (miss_state)
-            2'b00: begin // No missing lines
-                miss[0] <= ~rd_hit[0] & rd_done & RE;
-                miss[1] <= ~rd_hit[1] & rd_done & RE & rd_is_crossing;
-                MA1 <= (~rd_hit[0] & rd_done & RE) ? {rd_word_idx[0], 2'b00} : '0;
-                MA2 <= (~rd_hit[1] & rd_done & RE & rd_is_crossing) ? {rd_word_idx[1], 2'b00} : '0;
-                if (rd_post_misses) begin 
-                    miss_state <= 2'b01; 
-                    locked <= 1'b1;
-                end
-            end
-
-            2'b01: begin // Missing lines (cache becomes locked for reading)
-                if (line_is_filled[0] | force_unlock) begin 
-                    miss[0] <= 0;
-                    MA1 <= '0;
-                end
-                if (line_is_filled[1] | force_unlock) begin
-                    miss[1] <= 0;
-                    MA2 <= '0;
-                end
-                if ((miss1_complete & miss2_complete) | force_unlock) begin
-                    miss_state <= 2'b00;
-                    locked <= 1'b0;
-                end
-            end
-
-            default begin 
-                miss <= '0;
-                MA1 <= '0;
-                MA2 <= '0;
-                miss_state <= 2'b00;
-                locked <= 1'b0;
-            end
-        endcase
+        // >> Miss logic <<
+        miss[0] <= ~rd_hit[0] & rd_done & RE & ~ignore;
+        miss[1] <= ~rd_hit[1] & rd_done & RE & rd_is_crossing & ~ignore;
+        MA1 <= (~rd_hit[0] & rd_done & RE & ~ignore) ? {rd_word_idx[0], 2'b00} : '0;
+        MA2 <= (~rd_hit[1] & rd_done & RE & rd_is_crossing & ~ignore) ? {rd_word_idx[1], 2'b00} : '0;
+        if (rd_post_misses & ~ignore) begin 
+            locked <= 1'b1;
+        end
+    end else if (locked) begin // Locked cache behavior
+        // >> Post results <<
+        // >> Miss logic <<
+        if (line_is_filled[0] | ignore) begin 
+            miss[0] <= 0;
+            MA1 <= '0;
+        end
+        if (line_is_filled[1] | ignore) begin
+            miss[1] <= 0;
+            MA2 <= '0;
+        end
+        if ((miss1_complete & miss2_complete) | ignore) begin
+            ready[0] <= 1'b0;
+            hit[0] <= '0;
+            locked <= 1'b0;
+        end
     end
 end
 
@@ -345,39 +325,38 @@ end
 // 1. Address decode
 // ISSUE #1: What happens if i access half words? For example address 0x02 maps to 
 // upper half of word 0 and lower half of word 1
-// SOLUTION #1: (a) cache must decode to the inmediate lower word and the next one to check if both
+// SOLUTION #1: (a) cache must decode to the inmediate nearest lower word and the next one to check if both
 // map to a set in cache, if one is not available throw a miss. (b) use signals byte_offset and
 // BM to determine correct byte mapping for buffered output RD 
 // 1.1. Decode the write address
-logic [1:0]  wd_byte_offset;
-logic [29:0] wd_word_idx1, wd_word_idx2;
-logic [block_bits-1:0] wd_block_offset1, wd_block_offset2;
-logic [set_bits-1:0]   wd_set1, wd_set2;
-logic [tag_bits-1:0]   wd_tag1, wd_tag2;
-
+logic [1:0]  wd_byte_offset; // write byte offset
 assign wd_byte_offset = WA[1:0];
 
-assign wd_word_idx1 = WA[31:2];
-assign {wd_tag1, wd_set1, wd_block_offset1} = decode_address(wd_word_idx1);
+logic [29:0] wd_word_idx [0:1]; // [0]: nearest word, [1]: next word
+assign wd_word_idx[0] = WA[31:2];
+assign wd_word_idx[1] = wd_word_idx[0] + 1;
 
-assign wd_word_idx2 = wd_word_idx1 + 1;
-assign {wd_tag2, wd_set2, wd_block_offset2} = decode_address(wd_word_idx2);
+logic [block_bits-1:0] wd_block_offset [0:1]; // [0]: nearest word, [1]: next word
+logic [set_bits-1:0]   wd_set [0:1]; // [0]: nearest word, [1]: next word
+logic [tag_bits-1:0]   wd_tag [0:1]; // [0]: nearest word, [1]: next word
+assign {wd_tag[0], wd_set[0], wd_block_offset[0]} = decode_address(wd_word_idx[0]);
+assign {wd_tag[1], wd_set[1], wd_block_offset[1]} = decode_address(wd_word_idx[1]);
 
 // 1.2. Decode the input burst address'
-logic [block_bits-1:0] burst1_block_offset, burst2_block_offset;
-logic [set_bits-1:0]   burst1_set, burst2_set;
-logic [tag_bits-1:0]   burst1_tag, burst2_tag;
+logic [block_bits-1:0] burst_block_offset [0:1]; // [0]: burst1, [1]: burst2
+logic [set_bits-1:0]   burst_set [0:1];          // [0]: burst1, [1]: burst2
+logic [tag_bits-1:0]   burst_tag [0:1];          // [0]: burst1, [1]: burst2
 
-assign {burst1_tag, burst1_set, burst1_block_offset} = decode_address(in_addr_burst1[31:2]);
-assign {burst2_tag, burst2_set, burst2_block_offset} = decode_address(in_addr_burst2[31:2]);
+assign {burst_tag[0], burst_set[0], burst_block_offset[0]} = decode_address(in_addr_burst1[31:2]);
+assign {burst_tag[1], burst_set[1], burst_block_offset[1]} = decode_address(in_addr_burst2[31:2]);
 
 // 1.2. Decode the missing address'
-logic [block_bits-1:0] miss1_block_offset, miss2_block_offset;
-logic [set_bits-1:0]   miss1_set, miss2_set;
-logic [tag_bits-1:0]   miss1_tag, miss2_tag; 
+logic [block_bits-1:0] miss_block_offset [0:1]; // [0]: miss1, [1]: miss2
+logic [set_bits-1:0]   miss_set [0:1]; // [0]: miss1, [1]: miss2
+logic [tag_bits-1:0]   miss_tag [0:1]; // [0]: miss1, [1]: miss2
 
-assign {miss1_tag, miss1_set, miss1_block_offset} = decode_address(MA1[31:2]);
-assign {miss2_tag, miss2_set, miss2_block_offset} = decode_address(MA2[31:2]);
+assign {miss_tag[0], miss_set[0], miss_block_offset[0]} = decode_address(MA1[31:2]);
+assign {miss_tag[1], miss_set[1], miss_block_offset[1]} = decode_address(MA2[31:2]);
 
 // 2. Check boundary crossing
 logic wd_is_crossing;
@@ -401,93 +380,98 @@ logic [31:0] write_counter;
 wire wd_done = (write_counter == LATENCY-1);
 
 // 6. Hit detection
-// Check if data exists on any way of the mapped set
-logic [WAYS-1:0] wd_hits1, wd_hits2;
+// + Check if data exists on any way of the mapped set
+logic [WAYS-1:0] wd_hits [0:1]; // [0]: nearest word, [1]: next word
 
 generate
     genvar j;
     for (j = 0; j < WAYS; j++) begin
-        assign wd_hits1[j] = hit_detect(wd_tag1, tags[wd_set1][j][tag_bits], tags[wd_set1][j][tag_bits-1:0]);
-        assign wd_hits2[j] = hit_detect(wd_tag2, tags[wd_set2][j][tag_bits], tags[wd_set2][j][tag_bits-1:0]);
+        assign wd_hits[0][j] = hit_detect(wd_tag[0], tags[wd_set[0]][j][tag_bits], tags[wd_set[0]][j][tag_bits-1:0]);
+        assign wd_hits[1][j] = hit_detect(wd_tag[1], tags[wd_set[1]][j][tag_bits], tags[wd_set[1]][j][tag_bits-1:0]);
     end
 endgenerate
 
 // + Detect CLK alignment
-wire clk_align = wd_done & valid_burst;
+wire clk_align = wd_done & fill;
 
 // + Detect if input burst matches with missing address
-wire addr1_match = miss[0] & (burst1_tag == miss1_tag) & (burst1_set == miss1_set);
-wire addr2_match = miss[1] & (burst2_tag == miss2_tag) & (burst2_set == miss2_set);
+wire addr1_match = miss[0] & (burst_tag[0] == miss_tag[0]) & (burst_set[0] == miss_set[0]);
+wire addr2_match = miss[1] & (burst_tag[1] == miss_tag[1]) & (burst_set[1] == miss_set[1]);
 
 // + Detect if the writing address' match with any of the input bursts
-logic [1:0] wd1_match, wd2_match;
+logic [1:0] wd_match [0:1]; // [0]: nearest word, [1]: next word
 
-assign wd1_match[0] = addr1_match & (wd_tag1 == burst1_tag) & (wd_set1 == burst1_set); // match with burst 1
-assign wd1_match[1] = addr2_match & (wd_tag1 == burst2_tag) & (wd_set1 == burst2_set); // match with burst 2
+assign wd_match[0][0] = addr1_match & (wd_tag[0] == burst_tag[0]) & (wd_set[0] == burst_set[0]); // match with burst 1
+assign wd_match[0][1] = addr2_match & (wd_tag[0] == burst_tag[1]) & (wd_set[0] == burst_set[1]); // match with burst 2
 
-assign wd2_match[0] = addr1_match & (wd_tag2 == burst1_tag) & (wd_set2 == burst1_set); // match with burst 1
-assign wd2_match[1] = addr2_match & (wd_tag2 == burst2_tag) & (wd_set2 == burst2_set); // match with burst 2
+assign wd_match[1][0] = addr1_match & (wd_tag[1] == burst_tag[0]) & (wd_set[0] == burst_set[0]); // match with burst 1
+assign wd_match[1][1] = addr2_match & (wd_tag[1] == burst_tag[1]) & (wd_set[0] == burst_set[1]); // match with burst 2
 
-wire wd1_correction = clk_align & (wd1_match[0] | wd1_match[1]);
-wire wd2_correction = clk_align & (wd2_match[0] | wd2_match[1]);
+wire wd1_correction = clk_align & (wd_match[0][0] | wd_match[0][1]);
+wire wd2_correction = clk_align & (wd_match[1][0] | wd_match[1][1]);
 
 // + Map the hits to a way (one-hot to binary encoder) or if a new burst has the data
-logic [1:0] wd_hit;
-logic [way_bits-1:0] wd_way1, wd_way2;
+logic [way_bits-1:0] wd_way [0:1]; // [0]: nearest word, [1]: next word
 always_comb begin
-    wd_way1 = '0; wd_way2 = '0;
+    wd_way[0] = '0; wd_way[1] = '0;
     for (int i = 0; i < WAYS; i++) begin
-        if (wd_hits1[i]) wd_way1 = i;
-        if (wd_hits2[i]) wd_way2 = i;
+        if (wd_hits[0][i]) wd_way[0] = i;
+        if (wd_hits[1][i]) wd_way[1] = i;
     end
-    if (wd1_correction) wd_way1 = '0; // way correction if burst 1 or 2 provides new data
-    if (wd2_correction) wd_way2 = '0; // way correction if burst 1 or 2 provides new data
+    if (wd1_correction) wd_way[0] = '0; // way correction if burst 1 or 2 provides new data
+    if (wd2_correction) wd_way[1] = '0; // way correction if burst 1 or 2 provides new data
 end
 
-assign wd_hit[0] = (|wd_hits1) | wd1_correction; // confirm hit for write-data word1 if (any way on set has the content) or (feedback burst provide the content) 
-assign wd_hit[1] = (|wd_hits2) | wd2_correction; // confirm hit for write-data word2 if (any way on set has the content) or (feedback burst provide the content)
+// + Determine if both words are nearest
+logic [1:0] wd_hit; // [0]: nearest word, [1]: next word
+assign wd_hit[0] = (|wd_hits[0]) | wd1_correction; // confirm hit for write-data word1 if (any way on set has the content) or (feedback burst provide the content) 
+assign wd_hit[1] = (|wd_hits[1]) | wd2_correction; // confirm hit for write-data word2 if (any way on set has the content) or (feedback burst provide the content)
 wire wd_pre_hit = (!wd_is_crossing) ? wd_hit[0] : (wd_hit[0] & wd_hit[1]);
 
 // 7. Flip-Flop register
 wire wd_post_results = WE & wd_done & wd_pre_hit;
 always_ff @(negedge CLK, posedge RST) begin
-    if (RST || CLR) begin 
+    if (RST) begin 
         write_counter <= '0;
         ready[1] <= '0; hit[1] <= '0;
         queue <= 1'b0; dequeue <= 1'b0; pWBM <= '0; pWA <= '0; pWD <= '0;
         line_is_filled <= '0;
     end else begin 
         // >> Counter update logic <<
-        if (wd_done && WE) write_counter <= '0;          // post results
-        else if (WE) write_counter <= write_counter + 1; // standby cycles 
-        ready[1] <= wd_done;
+        if (WE) begin
+            if (wd_done) write_counter <= '0;        // search complete
+            else write_counter <= write_counter + 1; // standby (searching)
+        end else write_counter <= '0;                // idle (not searching)
+        // >> Post results <<
+        ready[1] <= wd_done & WE;
+        hit[1] <= wd_pre_hit & WE;
         // >> Write logic <<
         // + Replacement logic (on every clock negedge)[FIFO policy]
-        line_is_filled[0] <= addr1_match & valid_burst;
-        line_is_filled[1] <= addr2_match & valid_burst;
+        line_is_filled[0] <= addr1_match & fill;
+        line_is_filled[1] <= addr2_match & fill;
         for (int i = 0; i < WAYS; i++) begin
             // Update tags
-             // Burst 1
-            if (valid_burst && addr1_match) begin 
-                if (i == 0) tags[burst1_set][i] <= {1'b1, burst1_tag};
-                else tags[burst1_set][i] <= tags[burst1_set][i-1];
+            // Burst 1
+            if (fill && addr1_match) begin 
+                if (i == 0) tags[burst_set[0]][i] <= {1'b1, burst_tag[0]};
+                else tags[burst_set[0]][i] <= tags[burst_set[0]][i-1];
             end
             // Burst 2
-            if (valid_burst && addr2_match) begin
-                if (i == 0) tags[burst2_set][i] <= {1'b1, burst2_tag};
-                else tags[burst2_set][i] <= tags[burst2_set][i-1];
+            if (fill && addr2_match) begin
+                if (i == 0) tags[burst_set[1]][i] <= {1'b1, burst_tag[1]};
+                else tags[burst_set[1]][i] <= tags[burst_set[1]][i-1];
             end
             // Update data
             for (int j = 0; j < WPL; j++) begin
                 // Burst 1
-                if (valid_burst && addr1_match) begin
-                    if (i == 0) data[burst1_set][i][j] <= in_burst1[j];
-                    else data[burst1_set][i][j] <= data[burst1_set][i-1][j];
+                if (fill && addr1_match) begin
+                    if (i == 0) data[burst_set[0]][i][j] <= in_burst1[j];
+                    else data[burst_set[0]][i][j] <= data[burst_set[0]][i-1][j];
                 end
                 // Burst 2
-                if (valid_burst && addr2_match) begin
-                    if (i == 0) data[burst2_set][i][j] <= in_burst2[j];
-                    else data[burst2_set][i][j] <= data[burst2_set][i-1][j];
+                if (fill && addr2_match) begin
+                    if (i == 0) data[burst_set[1]][i][j] <= in_burst2[j];
+                    else data[burst_set[1]][i][j] <= data[burst_set[1]][i-1][j];
                 end
             end
         end
@@ -495,31 +479,31 @@ always_ff @(negedge CLK, posedge RST) begin
         if (wd_post_results) begin
                 case (wd_byte_offset)
                     2'b00: begin
-                        if (wd_byte1_sel) data[wd_set1][wd_way1][wd_block_offset1][7:0]   <= wd_bytes[0];
-                        if (wd_byte2_sel) data[wd_set1][wd_way1][wd_block_offset1][15:8]  <= wd_bytes[1];
-                        if (wd_byte3_sel) data[wd_set1][wd_way1][wd_block_offset1][23:16] <= wd_bytes[2];
-                        if (wd_byte4_sel) data[wd_set1][wd_way1][wd_block_offset1][31:24] <= wd_bytes[3];
+                        if (wd_byte1_sel) data[wd_set[0]][wd_way[0]][wd_block_offset[0]][7:0]   <= wd_bytes[0];
+                        if (wd_byte2_sel) data[wd_set[0]][wd_way[0]][wd_block_offset[0]][15:8]  <= wd_bytes[1];
+                        if (wd_byte3_sel) data[wd_set[0]][wd_way[0]][wd_block_offset[0]][23:16] <= wd_bytes[2];
+                        if (wd_byte4_sel) data[wd_set[0]][wd_way[0]][wd_block_offset[0]][31:24] <= wd_bytes[3];
                     end
 
                     2'b01: begin
-                        if (wd_byte1_sel) data[wd_set1][wd_way1][wd_block_offset1][15:8]  <= wd_bytes[0];
-                        if (wd_byte2_sel) data[wd_set1][wd_way1][wd_block_offset1][23:16] <= wd_bytes[1];
-                        if (wd_byte3_sel) data[wd_set1][wd_way1][wd_block_offset1][31:24] <= wd_bytes[2];
-                        if (wd_byte4_sel) data[wd_set2][wd_way2][wd_block_offset2][7:0]   <= wd_bytes[3];
+                        if (wd_byte1_sel) data[wd_set[0]][wd_way[0]][wd_block_offset[0]][15:8]  <= wd_bytes[0];
+                        if (wd_byte2_sel) data[wd_set[0]][wd_way[0]][wd_block_offset[0]][23:16] <= wd_bytes[1];
+                        if (wd_byte3_sel) data[wd_set[0]][wd_way[0]][wd_block_offset[0]][31:24] <= wd_bytes[2];
+                        if (wd_byte4_sel) data[wd_set[1]][wd_way[1]][wd_block_offset[1]][7:0]   <= wd_bytes[3];
                     end
 
                     2'b10: begin
-                        if (wd_byte1_sel) data[wd_set1][wd_way1][wd_block_offset1][23:16] <= wd_bytes[0];
-                        if (wd_byte2_sel) data[wd_set1][wd_way1][wd_block_offset1][31:24] <= wd_bytes[1];
-                        if (wd_byte3_sel) data[wd_set2][wd_way2][wd_block_offset2][7:0]   <= wd_bytes[2];
-                        if (wd_byte4_sel) data[wd_set2][wd_way2][wd_block_offset2][15:8]  <= wd_bytes[3];
+                        if (wd_byte1_sel) data[wd_set[0]][wd_way[0]][wd_block_offset[0]][23:16] <= wd_bytes[0];
+                        if (wd_byte2_sel) data[wd_set[0]][wd_way[0]][wd_block_offset[0]][31:24] <= wd_bytes[1];
+                        if (wd_byte3_sel) data[wd_set[1]][wd_way[1]][wd_block_offset[1]][7:0]   <= wd_bytes[2];
+                        if (wd_byte4_sel) data[wd_set[1]][wd_way[1]][wd_block_offset[1]][15:8]  <= wd_bytes[3];
                     end
 
                     2'b11: begin
-                        if (wd_byte1_sel) data[wd_set1][wd_way1][wd_block_offset1][31:24] <= wd_bytes[0];
-                        if (wd_byte2_sel) data[wd_set2][wd_way2][wd_block_offset2][7:0]   <= wd_bytes[1];
-                        if (wd_byte3_sel) data[wd_set2][wd_way2][wd_block_offset2][15:8]  <= wd_bytes[2];
-                        if (wd_byte4_sel) data[wd_set2][wd_way2][wd_block_offset2][23:16] <= wd_bytes[3];
+                        if (wd_byte1_sel) data[wd_set[0]][wd_way[0]][wd_block_offset[0]][31:24] <= wd_bytes[0];
+                        if (wd_byte2_sel) data[wd_set[1]][wd_way[1]][wd_block_offset[1]][7:0]   <= wd_bytes[1];
+                        if (wd_byte3_sel) data[wd_set[1]][wd_way[1]][wd_block_offset[1]][15:8]  <= wd_bytes[2];
+                        if (wd_byte4_sel) data[wd_set[1]][wd_way[1]][wd_block_offset[1]][23:16] <= wd_bytes[3];
                     end
                 endcase
             end
@@ -528,8 +512,6 @@ always_ff @(negedge CLK, posedge RST) begin
         pWBM <= WBM;
         pWA <= WA;
         pWD <= WD;
-        // >> Miss logic <<
-        hit[1] <= wd_done & wd_pre_hit;
     end
 end
 

@@ -1,5 +1,5 @@
 module packed_mem_tb ();
-    logic clk, rst, ready, we;
+    logic clk, rst, ready, re, we;
     logic [3:0]  bm;
     logic [31:0] addr, rd, wd;
 
@@ -14,7 +14,8 @@ module packed_mem_tb ();
         .WPL(2)
     ) _mem (
         .CLK(clk), .RST(rst),
-        .WE(we), .BM(bm), .A(addr),
+        .RE(re), .WE(we),
+        .BM(bm), .A(addr),
         .WD(wd),
         .RD(rd),
         .ready(ready)
@@ -38,9 +39,11 @@ module packed_mem_tb ();
         rst = 0;
 
         // --- Pruebas de lectura ---
-        task_read(32'd0, 4'b1111);
-        task_read(32'd4, 4'b1111);
-
+        task_read(32'd0, 4'b0011);
+        task_read(32'd4, 4'b0111);
+        task_read(32'd2, 4'b1111);
+        task_read(32'd6, 4'b1111);
+        task_read(32'd12, 4'b1111);
         // --- Volcado de memoria ---
         $display("\n[SISTEMA] Generando archivos de salida...");
         $writememh("./output/cache_l1_data_exit.hex", _mem._l1_dut.data);
@@ -61,6 +64,7 @@ module packed_mem_tb ();
         begin
             $display("+ TASK_READ: A[0x%0d], BM[%b]", address, mask);
             found = 0;
+            re = 1'b1;
             addr = address;
             bm = mask;
             for (int i = 0; i < LAT1+LAT2+LAT3+5 && !found; i++) begin
@@ -73,6 +77,7 @@ module packed_mem_tb ();
             end
             addr = '0;
             bm = 4'b0000;
+            re = 1'b0;
         end
     endtask
 endmodule
