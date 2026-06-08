@@ -180,6 +180,14 @@ class Instruction:
             self.is_secure = self.is_secure or secure_prefix
             return
 
+        if op_clean == "end":
+            self.op = "end"
+            self.rd = "zero"
+            self.rn = "zero"
+            self.rm = "zero"
+            self.is_secure = self.is_secure or secure_prefix
+            return
+
         if op_clean == "seqz":
             self.op = "seq"
             self.rm = "zero"
@@ -281,7 +289,7 @@ class Instruction:
         self._resolve_regs()
         self._validate_isa_constraints()
 
-        tipo_r = {"add", "sub", "mul", "div", "mod", "and", "orr", "xor", "sll", "srl", "mov", "seq", "ret", "nop", "seqz"}
+        tipo_r = {"add", "sub", "mul", "div", "mod", "and", "orr", "xor", "sll", "srl", "mov", "seq", "ret", "nop", "seqz", "end"}
         tipo_i = {"addi", "subi", "muli", "divi", "modi", "andi", "orri", "xori", "slli", "srli", "movi", "seqi", "li", "la"}
         tipo_m = {"ldw", "ldh", "ldb", "stw", "sth", "stb"}
         tipo_b = {"beq", "bne", "bgt", "blt", "bge", "ble", "beqz"}
@@ -376,6 +384,7 @@ class F32IS_Encoder:
         "login": 0b10001,
         "quit": 0b10001,
         "nop": 0b00000,
+        "end": 0b00000,
         "ret": 0b00000,
     }
 
@@ -392,6 +401,7 @@ class F32IS_Encoder:
         "mov": 0b0010,
         "ret": 0b0010,
         "nop": 0b0010,
+        "end": 0b0010,
         "sub": 0b0011,
         "subi": 0b0011,
         "mul": 0b0100,
@@ -485,7 +495,8 @@ class F32IS_Encoder:
         rd = format(inst.rd or 0, "05b")
         rn = format(inst.rn or 0, "05b")
         rm = format(inst.rm or 0, "05b")
-        return "0000000" + rm + rn + rd + func4 + opcode + p
+        func7 = "0001111" if inst.op == "end" else "0000000"
+        return func7 + rm + rn + rd + func4 + opcode + p
 
     @staticmethod
     def encode_i(inst: Instruction) -> str:

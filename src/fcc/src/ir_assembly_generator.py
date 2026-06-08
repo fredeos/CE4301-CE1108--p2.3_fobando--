@@ -102,6 +102,9 @@ class IRAssemblyGenerator(AssemblyGenerator):
             # Se emiten todas las funciones despues del punto de entrada.
             self._emit_ir_function(function)
 
+        # end marca el cierre fisico y debe quedar despues de todo el codigo IR.
+        self._emit("end")
+
     def _emit_ir_function(self, function: IRFunction):
         """Entradas: funcion IR. Salida: prologo, cuerpo y epilogo. Uso: _emit_ir_program."""
         function_symbol = self.symbol_table.global_scope.symbols.get(function.name)

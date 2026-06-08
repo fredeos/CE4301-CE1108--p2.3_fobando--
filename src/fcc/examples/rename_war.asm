@@ -39,3 +39,4 @@ main:    # addr=24
     ldw ra, +0(sp)
     addi sp, sp, -52
     ret
+    end

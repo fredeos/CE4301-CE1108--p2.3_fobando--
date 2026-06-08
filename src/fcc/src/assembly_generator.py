@@ -940,6 +940,9 @@ class AssemblyGenerator:
             if isinstance(decl, FunctionDeclNode):
                 self._emit_function(decl)
 
+        # end marca el cierre fisico y debe quedar despues de todo el codigo.
+        self._emit("end")
+
     def _emit_global_initializers(self, node: VarDeclNode):
         """Genera el codigo de inicializacion para globales con valor."""
 
