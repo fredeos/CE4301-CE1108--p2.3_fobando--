@@ -16,6 +16,8 @@ module hazard_unit #(
     input  logic mem_busy,
     input  logic wb_busy,
 
+    input  logic cache_search_ready,
+
     output logic StallIF,
     output logic FlushIF,
 
@@ -37,6 +39,7 @@ module hazard_unit #(
     output logic [INSTR_WIDTH-1:0] RD1FwdEX,
     output logic [INSTR_WIDTH-1:0] RD2FwdEX,
     output logic [INSTR_WIDTH-1:0] RD3FwdEX
+    
 );
 
     // Codigos para seleccionar la fuente de forwarding hacia EX.
@@ -193,6 +196,11 @@ module hazard_unit #(
     logic        ex_secure_load_wait_hazard;
     logic        ex_store_data_wait_hazard;
     logic        ex_secure_store_data_wait_hazard;
+
+    // variable para cache
+    logic mem_is_memory_op;
+
+    assign mem_is_memory_op = mem_valid && (mem_opcode == OP_M_LD);
 
     // Una instruccion cero se trata como NOP.
     assign id_valid  = (IDInstr  != nop);
@@ -630,6 +638,7 @@ module hazard_unit #(
         RD2SrcEX = SRC_PIPE;
         RD3SrcEX = SRC_PIPE;
 
+
         // MEM tiene prioridad sobre WB para forwarding normal, pero solo
         // cuando ALUOut ya representa el dato final adelantable.
         if (mem_can_forward_normal && mem_normal_writeable_dst) begin
@@ -698,8 +707,8 @@ module hazard_unit #(
             default:  RD3FwdEX = RD3PipeEX;
         endcase
 
-        // Prioridad de control: stalls estructurales, branch, sesiones de admin, load-use.
-        if (mem_busy) begin
+
+        if (mem_busy || (mem_is_memory_op && !cache_search_ready)) begin
             StallIF  = 1'b1;
             StallID  = 1'b1;
             StallEX  = 1'b1;

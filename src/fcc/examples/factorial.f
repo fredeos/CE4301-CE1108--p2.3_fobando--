@@ -12,5 +12,5 @@ func int factorial(int a){
 }
 
 func void main(){
-    factorial(8);
+    factorial(2);
 }
