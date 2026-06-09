@@ -5,6 +5,7 @@ import re
 from typing import Dict, List, Optional, Set, Tuple
 
 from ir_nodes import IRFunction, IRInstruction, IRProgram, clone_instructions
+from dead_code_elimination import DeadCodeEliminator
 
 
 UNROLL_BODY_INSTRUCTION_BUDGET = 96
@@ -43,6 +44,7 @@ class OptimizationReport:
     loop_skipped: List[str] = field(default_factory=list)
     unroll_limits: List[str] = field(default_factory=list)
     renamed_defs: int = 0
+    dead_code_removed: int = 0
     opt_level: str = "O0"
     unroll_factor: int = 1
     rename_statics: bool = False
@@ -54,6 +56,8 @@ class OptimizationReport:
         lines.append(f"  Loop unrolling parcial: factor={self.unroll_factor}")
         lines.append(f"  Renombramiento de temporales/estaticos: {'si' if self.rename_statics else 'no'}")
         lines.append(f"  Renombramientos aplicados: {self.renamed_defs}")
+        lines.append(f"  Eliminación de código muerto: {'sí' if self.opt_level == 'O3' else 'no'}")
+        lines.append(f"  Instrucciones eliminadas por DCE: {self.dead_code_removed}")
         if self.loop_unrolled:
             lines.append("  Loops desenrollados:")
             for item in self.loop_unrolled:
@@ -126,6 +130,11 @@ class IROptimizer:
             if rename_statics:
                 current = self.rename_static_dependencies(current, protected_names=global_names)
             optimized.functions.append(current)
+
+        # el dce va fuera del for ya que recibe un IRProgram completo
+        if opt_level == "O3":
+            optimized, dce_result = DeadCodeEliminator().eliminate(optimized)
+            self.report.dead_code_removed = dce_result.removed_count
         return optimized, self.report
 
     def analyze_unroll_limits(self, program: IRProgram, heuristic: bool = True) -> List[LoopUnrollLimit]:

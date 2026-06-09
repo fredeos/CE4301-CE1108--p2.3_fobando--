@@ -9,17 +9,17 @@ factorial_B0:
 factorial_while_cond_1:
   pred: factorial_B0, factorial_B2
   succ: factorial_B2, factorial_while_end_2
-  t3 = i <= a
-  if_false t3 goto factorial_while_end_2
+  t6 = i <= a
+  if_false t6 goto factorial_while_end_2
 
 factorial_B2:
   pred: factorial_while_cond_1
   succ: factorial_while_cond_1
-  t4 = resultado * i
-  resultado = t4
-  t5 = 1
-  t6 = i + t5
-  i = t6
+  t7 = resultado * i
+  resultado = t7
+  t8 = 1
+  t9 = i + t8
+  i = t9
   goto factorial_while_cond_1
 
 factorial_while_end_2:

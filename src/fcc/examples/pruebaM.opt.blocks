@@ -1,0 +1,8 @@
+bloques main:
+main_B0:
+  t2 = 10
+  y = t2
+  t5 = 2
+  t6 = y * t5
+  z = t6
+  return z

@@ -61,6 +61,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
               fcc main.f --optimized-ir -O2 --unroll-factor 4
               fcc main.f --emit-ir-files -O2 --unroll-factor 3
               fcc main.f --ir-backend -O1 -s
+              fcc main.f --optimized-ir -O3
             """
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -149,7 +150,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "-O",
         "--opt-level",
-        choices=["0", "1", "2", "O0", "O1", "O2"],
+        choices=["0", "1", "2", "3", "O0", "O1", "O2", "O3"],
         default="0",
         metavar="<0|1|2>",
         help=(
@@ -160,6 +161,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("-O0", action="store_const", const="0", dest="opt_level", help="Equivale a -O 0.")
     parser.add_argument("-O1", action="store_const", const="1", dest="opt_level", help="Equivale a -O 1.")
     parser.add_argument("-O2", action="store_const", const="2", dest="opt_level", help="Equivale a -O 2.")
+    parser.add_argument("-O3", action="store_const", const="3", dest="opt_level", help="Equivale a -O 3.")
     parser.add_argument(
         "--unroll-factor",
         type=int,
@@ -252,7 +254,7 @@ def build_optimization_options(args) -> dict[str, object]:
     opt_number = int(opt_level[1:])
 
     # O0 queda limpio; cada nivel superior prende pases por defecto.
-    rename_statics = args.rename_statics if args.rename_statics is not None else opt_number >= 1
+    rename_statics = args.rename_statics if args.rename_statics is not None else opt_number == 1
 
     if args.unroll_factor is not None:
         unroll_factor = args.unroll_factor
@@ -274,18 +276,26 @@ def validate_optimization_options(options: dict[str, object]) -> str | None:
     unroll_factor = int(options["unroll_factor"])
     unroll_factor_was_set = bool(options["unroll_factor_was_set"])
 
-    if opt_number >= 2 and not unroll_factor_was_set:
+    if opt_number == 2 and not unroll_factor_was_set:
         return (
             "Error: -O2 requiere --unroll-factor <n>. "
             "No hay factor por defecto; el compilador lo validara contra los loops del programa."
         )
+
+    if opt_number != 2 and unroll_factor_was_set:
+        return "Error: --unroll-factor solo se usa con -O2."
+
     if unroll_factor_was_set and unroll_factor < 2:
         return "Error: --unroll-factor debe ser mayor o igual que 2 para aplicar loop unrolling."
     return None
 
 
 def optimization_enabled(options: dict[str, object]) -> bool:
-    return bool(options["rename_statics"]) or int(options["unroll_factor"]) > 1
+    return (
+        bool(options["rename_statics"])
+        or int(options["unroll_factor"]) > 1
+        or str(options["opt_level"]) == "O3"
+    )
 
 
 def optimize_ir_or_exit(ir_program, options: dict[str, object]):
@@ -434,6 +444,7 @@ def main():
 
     if args.ir or args.blocks or args.optimized_ir or args.emit_ir_files:
         ir_program = build_ir(ast)
+        print(ir_program)
         has_optimizations = optimization_enabled(opt_options)
         display_program = ir_program
         report = None
