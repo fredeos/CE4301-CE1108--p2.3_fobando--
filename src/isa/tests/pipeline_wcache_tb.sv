@@ -3,8 +3,8 @@
 module pipeline_wcache_tb ();
     logic clk, rst;
 
-    int cycles = 120000;
-    int factor = 10000;
+    int cycles = 12000;
+    int factor = 1000;
     logic [31:0] cycle;
     logic [31:0] pmu_val;
 
@@ -29,12 +29,36 @@ module pipeline_wcache_tb ();
 
         for (int i = 1; i < cycles; i++) begin 
             #10;
-            if (_cpu.MEM_INSTR[5:1] == 5'b00100)
-                $display("Ciclo %0d: LOAD  addr=0x%08h", i, _cpu.MEM_ALUOut);
-            if (_cpu.MEM_INSTR[5:1] == 5'b00101)
-                $display("Ciclo %0d: STORE addr=0x%08h", i, _cpu.MEM_ALUOut);
+
+            // --- DEBUG PMU: ver comportamiento de write_miss durante STOREs ---
+            if (_cpu.MEM_INSTR[5:1] == 5'b00101) begin
+                $display("Ciclo %0d: STORE addr=0x%08h | WE=%b | write_miss[0]=%b | ready=%b | state=%b",
+                    i,
+                    _cpu.MEM_ALUOut,
+                    _cpu._packed_mem.WE,         // write enable que llega a packed_mem
+                    _cpu._packed_mem.write_miss[0], // L1 write miss
+                    _cpu._packed_mem.ready,
+                    _cpu._packed_mem.state       // estado de la FSM
+                );
+            end
+            
             if ((i % factor) == 0) $display("Ciclo [%0d]", i);
         end
+
+        // --- Volcado final de las memorias ---
+        $display("\n[SISTEMA] Generando archivos de salida corregidos...");
+
+        $writememh("./output/data_mem_exit.hex", _cpu._packed_mem._mem_dut.RAM);
+        $display("[SISTEMA] Archivo para memoria de datos generado exitosamente.");
+
+        $writememh("./output/vault_exit.hex", _cpu._vault.RAM);
+        $display("[SISTEMA] Archivo para boveda generado exitosamente.");
+
+        $writememh("./output/regfile_exit.hex", _cpu._register_file.regfile_mem);
+        $display("[SISTEMA] Archivo para banco de registros generado exitosamente.");
+
+        $writememh("./output/secmem_exit.hex", _cpu._secure_memory.mem);
+        $display("[SISTEMA] Archivo para memoria segura generado exitosamente.");
 
         $display("\n--- Reporte de Desempeño (PMU) ---");
 

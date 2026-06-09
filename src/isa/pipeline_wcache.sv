@@ -352,11 +352,11 @@ module pipeline_wcache ( // Pipeline de 5 etapas para arquitectura RISC: F32IS
 
     assign MEM_MemRead = (MEM_INSTR[5:1] == 5'b00100);
 
-    packed_mem #(
+    packed_mem  #(
         .MEM_SIZE(MEM_SIZE_KB * 1024),
         .L1_SIZE(32),
         .L2_SIZE(64)
-    ) _ram (
+    ) _packed_mem (
         .CLK(clk), 
         .RST(rst),
         .RE(MEM_MemRead),
