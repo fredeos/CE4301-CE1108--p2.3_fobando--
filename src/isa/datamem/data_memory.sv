@@ -121,8 +121,8 @@ module data_memory #(
             else if (!RE)read_counter <= '0;
             ready[0] <= rd_done;
             // >> Read logic <<
-            // Read data
             if (RE && rd_done) begin 
+                // Read data
                 case (rd_byte_offset)
                     2'b00: begin 
                         if (rd_byte1_sel) read_data[0] <= rd_bytes[0];

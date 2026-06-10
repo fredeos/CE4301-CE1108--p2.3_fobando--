@@ -28,7 +28,7 @@ module packed_mem #(
     input  logic [31:0] WD, // write data
     output logic [31:0] RD, // read data
     // + Output control signals
-    output logic ready,
+    output logic ready,            // read ready signal
     output logic [1:0] read_miss,  // [0]: L1, [1]: L2
     output logic [1:0] write_miss  // [0]: L1, [1]: L2
 );
@@ -56,6 +56,17 @@ module packed_mem #(
 
     // 2. Data signals
     logic [31:0] read_data [0:2]; // (READ DATA) [0]: L1, [1]: L2, [2]: MEM
+    logic [3:0][7:0] rd_bytes [0:2];
+
+    generate
+        genvar i;
+        for (i = 0; i < 3; i++) begin
+            assign rd_bytes[i][0] = read_data[i][7:0];
+            assign rd_bytes[i][1] = read_data[i][15:8];
+            assign rd_bytes[i][2] = read_data[i][23:16];
+            assign rd_bytes[i][3] = read_data[i][31:24];
+        end
+    endgenerate
 
     // 3. Burst signals
     logic [31:0] burst_addr [0:1];       // [0]: burst1, [1]: burst2
@@ -80,6 +91,22 @@ module packed_mem #(
     logic [3:0]  L2_bm_M   [0:1]; // (L2-M byte mode) [0]: input, [1]: output
     logic [31:0] L2_addr_M [0:1]; // (L2-M address)   [0]: input, [1]: output
     logic [31:0] L2_wd_M   [0:1]; // (L2-M write data)[0]: input, [1]: output
+
+    logic [3:0][7:0] L1_rd_L2;
+    logic [3:0] L1_hits_L2;
+
+    wire L1_hit1_L2 = L1_hits_L2[0];
+    wire L1_hit2_L2 = L1_hits_L2[1];
+    wire L1_hit3_L2 = L1_hits_L2[2];
+    wire L1_hit4_L2 = L1_hits_L2[3];
+
+    logic [3:0][7:0] L2_rd_M;
+    logic [3:0] L2_hits_M;
+
+    wire L2_hit1_M = L2_hits_M[0];
+    wire L2_hit2_M = L2_hits_M[1];
+    wire L2_hit3_M = L2_hits_M[2];
+    wire L2_hit4_M = L2_hits_M[3];
 
     // --- Memory access FSM ---
     // NOTE #1: This finite state machine allows controlling the memory for initiating data reading
@@ -115,7 +142,11 @@ module packed_mem #(
 
                 3'b010: begin // Search on L2
                     ready <= 1'b0;
-                    RD <= read_data[1];
+                    //RD <= read_data[1];
+                    RD[7:0]   <= (L1_hit1_L2) ? L1_rd_L2[0] : rd_bytes[1][0];
+                    RD[15:8]  <= (L1_hit2_L2) ? L1_rd_L2[1] : rd_bytes[1][1];
+                    RD[23:16] <= (L1_hit3_L2) ? L1_rd_L2[2] : rd_bytes[1][2];
+                    RD[31:24] <= (L1_hit4_L2) ? L1_rd_L2[3] : rd_bytes[1][3];
                     burst_addr[0] <= L2_burst_addr[0];
                     burst_addr[1] <= L2_burst_addr[1];
                     for (int i = 0; i < WPL; i++) begin 
@@ -128,7 +159,11 @@ module packed_mem #(
 
                 3'b011: begin // Search on M
                     ready <= 1'b0;
-                    RD <= read_data[2];
+                    //RD <= read_data[2];
+                    RD[7:0]   <= (L2_hit1_M) ? L2_rd_M[0] : rd_bytes[2][0];
+                    RD[15:8]  <= (L2_hit2_M) ? L2_rd_M[1] : rd_bytes[2][1];
+                    RD[23:16] <= (L2_hit3_M) ? L2_rd_M[2] : rd_bytes[2][2];
+                    RD[31:24] <= (L2_hit4_M) ? L2_rd_M[3] : rd_bytes[2][3];
                     burst_addr[0] <= M_burst_addr[0];
                     burst_addr[1] <= M_burst_addr[1];
                     for (int i = 0; i < WPL; i++) begin 
@@ -190,10 +225,17 @@ module packed_mem #(
 
     // + Write buffer L1-L2
     writebuf #(.size(6)) _l1_writebuf (
+        // + Sequential logic signals
         .CLK(CLK), .RST(RST),
+        // + Control signals
         .queue(queue[0]), .dequeue(dequeue[0]),
+        // + Input write content
         .addr_in(L1_addr_L2[0]), .data_in(L1_wd_L2[0]), .bm_in(L1_bm_L2[0]),
+        // + Lookup signals
+        .A(A), .BM(BM), .RD(L1_rd_L2), .hits(L1_hits_L2),
+        // + Output write content
         .addr_out(L1_addr_L2[1]), .data_out(L1_wd_L2[1]), .bm_out(L1_bm_L2[1]),
+        // + Output control signals
         .valid(valid[0]), .hold(full[0])
     );
 
@@ -222,10 +264,17 @@ module packed_mem #(
 
     // + Write buffer L2-M
     writebuf #(.size(6)) _l2_writebuf (
+        // + Sequential logic signals
         .CLK(CLK), .RST(RST),
-        .queue(queue[1]), .dequeue(dequeue[1]),
+        // + Control signals
+        .queue(queue[1]), .dequeue(1'b0),
+        // + Input write content
         .addr_in(L2_addr_M[0]), .data_in(L2_wd_M[0]), .bm_in(L2_bm_M[0]),
+        // + Lookup signals
+        .A(A), .BM(BM), .RD(L2_rd_M), .hits(L2_hits_M),
+        // + Output write content
         .addr_out(L2_addr_M[1]), .data_out(L2_wd_M[1]), .bm_out(L2_bm_M[1]),
+        // + Output control signals
         .valid(valid[1]), .hold(full[1])
     );
 
@@ -234,7 +283,7 @@ module packed_mem #(
         // + Sequential logic signals
         .CLK(CLK), .RST(RST),
         // + Write signals
-        .WE(valid[1]), .WBM(L2_bm_M[1]), .WA(L2_addr_M[1]), .WD(L2_wd_M[1]),
+        .WE(1'b0), .WBM(L2_bm_M[1]), .WA(L2_addr_M[1]), .WD(L2_wd_M[1]),
         // + Read signals
         .RE(M_RE), .RBM(BM), .RA(A), .RD(read_data[2]),
         // + Control signals
