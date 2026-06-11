@@ -36,6 +36,7 @@ module packed_mem #(
     // 1. Control signals
     logic [1:0] L1_hits, L2_hits; // (READ&WRITE HITS) [0]: read, [1]: write
     logic [1:0] locked;           // ($ LOCK STATUS)   [0]: L1,   [1]: L2
+    logic [1:0] ignore;           // ($ MISS IGNORE)   [0]: L1,   [1]: L2
     logic [1:0] L1_rdy, L2_rdy;   // (READY STATUS)    [0]: read, [1]: write
     logic [1:0] M_rdy;            // (READY STATUS)    [0]: read, [1]: write
 
@@ -79,10 +80,19 @@ module packed_mem #(
     logic [WPL-1:0][31:0] M_burst [0:1]; // [0]: burst1, [1]: burst2
 
     // 4. Write-through buffer signals
-    logic [1:0] queue, dequeue; // [0]: L1, [1]: L2
-    logic [1:0] valid, full;    // [0]: L1, [1]: L2
+    logic [2:0] queue, dequeue; // [0]: IN, [1]: L1, [2]: L2
+    logic [2:0] valid, full;    // [0]: IN, [1]: L1, [2]: L2
 
-    assign dequeue[1] = M_rdy[1];
+    assign queue[0]   = WE;
+    assign dequeue[2] = M_rdy[1];
+
+    logic [3:0]  IN_bm_L1   [0:1]; // (L1-L2 byte mode) [0]: input, [1]: output
+    logic [31:0] IN_addr_L1 [0:1]; // (L1-L2 address)   [0]: input, [1]: output
+    logic [31:0] IN_wd_L1   [0:1]; // (L1-L2 write data)[0]: input, [1]: output
+
+    assign IN_bm_L1[0] = BM;
+    assign IN_addr_L1[0] = A;
+    assign IN_wd_L1[0] = WD;
 
     logic [3:0]  L1_bm_L2   [0:1]; // (L1-L2 byte mode) [0]: input, [1]: output
     logic [31:0] L1_addr_L2 [0:1]; // (L1-L2 address)   [0]: input, [1]: output
@@ -91,6 +101,14 @@ module packed_mem #(
     logic [3:0]  L2_bm_M   [0:1]; // (L2-M byte mode) [0]: input, [1]: output
     logic [31:0] L2_addr_M [0:1]; // (L2-M address)   [0]: input, [1]: output
     logic [31:0] L2_wd_M   [0:1]; // (L2-M write data)[0]: input, [1]: output
+
+    logic [3:0][7:0] IN_rd_L1;
+    logic [3:0] IN_hits_L1;
+
+    wire IN_hit1_L1 = IN_hits_L1[0];
+    wire IN_hit2_L1 = IN_hits_L1[1];
+    wire IN_hit3_L1 = IN_hits_L1[2];
+    wire IN_hit4_L1 = IN_hits_L1[3];
 
     logic [3:0][7:0] L1_rd_L2;
     logic [3:0] L1_hits_L2;
@@ -118,6 +136,7 @@ module packed_mem #(
         if (RST) begin
             ready <= 1'b0;
             RD <= '0;
+            ignore <= '0;
             burst_addr[0] <= '0;
             burst_addr[1] <= '0;
             for (int i = 0; i < WPL; i++) begin 
@@ -130,12 +149,16 @@ module packed_mem #(
                 3'b000:  begin // idle
                     ready <= 1'b0;
                     RD <= '0;
-                    state <= 3'b001; // go-to L1
+                    if (RE) state <= 3'b001; // go-to L1
                 end
 
                 3'b001: begin // Search on L1
                     ready <= L1_read_hit;
-                    RD <= read_data[0];
+                    //RD <= read_data[0];
+                    RD[7:0]   <= (IN_hit1_L1) ? IN_rd_L1[0] : rd_bytes[0][0];
+                    RD[15:8]  <= (IN_hit2_L1) ? IN_rd_L1[1] : rd_bytes[0][1];
+                    RD[23:16] <= (IN_hit3_L1) ? IN_rd_L1[2] : rd_bytes[0][2];
+                    RD[31:24] <= (IN_hit4_L1) ? IN_rd_L1[3] : rd_bytes[0][3];
                     if (L1_read_miss) state <= 3'b010;     // go-to L2
                     else if (L1_read_hit) state <= 3'b000; // go back to idle
                 end
@@ -154,7 +177,12 @@ module packed_mem #(
                         burst[1][i] <= L2_burst[1][i];
                     end
                     if (L2_read_miss) state <= 3'b011;     // go-to M
-                    else if (L2_read_hit) state <= 3'b100; // fill missing lines on L1
+                    else if (L2_read_hit) begin 
+                        if (|L1_hits_L2) begin 
+                            ignore <= 2'b01;
+                            state <= 3'b110; // data was forwarded, but burst is outdated
+                        end else state <= 3'b100; // fill missing lines on L1
+                    end
                 end
 
                 3'b011: begin // Search on M
@@ -170,7 +198,12 @@ module packed_mem #(
                         burst[0][i] <= M_burst[0][i];
                         burst[1][i] <= M_burst[1][i];
                     end
-                    if (M_rdy[0]) state <= 3'b101; // fill missing lines on L2 and L1
+                    if (M_rdy[0]) begin
+                        if (|L2_hits_M) begin
+                            ignore <= 2'b11;
+                            state <= 3'b110; // data was forwarded, but burst is outdated
+                        end else state <= 3'b101; // fill missing lines on L2 and L1
+                    end
                 end
 
                 3'b100: begin // L1 miss penalty (fill missing lines)
@@ -181,6 +214,12 @@ module packed_mem #(
                 3'b101: begin // L2 miss penalty (fill missing lines)
                     ready <= 1'b0;
                     state <= 3'b100; // fill missig lines on L1
+                end
+
+                3'b110: begin // Forwarding fix transition state
+                    ignore <= 2'b00;
+                    ready <= 1'b1;
+                    state <= 3'b000; // go back to idle
                 end
 
                 default: begin
@@ -201,12 +240,28 @@ module packed_mem #(
     wire L2_fml = (state == 3'b101); // fill missing lines for L2
 
     // --- L1 Cache ---
+    // + Write buffer IN-L1
+    writebuf #(.size(6)) _in_writebuf (
+        // + Sequential logic signals
+        .CLK(CLK), .RST(RST),
+        // + Control signals
+        .queue(queue[0]), .dequeue(dequeue[0]),
+        // + Input write content
+        .addr_in(IN_addr_L1[0]), .data_in(IN_wd_L1[0]), .bm_in(IN_bm_L1[0]),
+        // + Lookup signals
+        .A(A), .BM(BM), .RD(IN_rd_L1), .hits(IN_hits_L1),
+        // + Output write content
+        .addr_out(IN_addr_L1[1]), .data_out(IN_wd_L1[1]), .bm_out(IN_bm_L1[1]),
+        // + Output control signals
+        .valid(valid[0]), .hold(full[0])
+    );
+
     // + Cache module
     cache #(.SIZE(L1_SIZE), .WPL(WPL), .WAYS(L1_ASO), .LATENCY(L1_LATENCY)) _l1_dut (
         // + Sequential logic signals
-        .CLK(CLK), .RST(RST), .ignore(1'b0),
+        .CLK(CLK), .RST(RST), .ignore(ignore[0]),
         // + Write signals
-        .WE(WE), .WBM(BM), .WA(A), .WD(WD),
+        .WE(valid[0]), .WBM(IN_bm_L1[1]), .WA(IN_addr_L1[1]), .WD(IN_wd_L1[1]),
         // + Read signals
         .RE(L1_RE), .RBM(BM), .RA(A), .RD(read_data[0]),
         // + Control signals
@@ -219,7 +274,7 @@ module packed_mem #(
         .out_addr_burst1(), .out_addr_burst2(),
         .out_burst1(), .out_burst2(),
         // + Write-through signals
-        .queue(queue[0]), .dequeue(),
+        .queue(queue[1]), .dequeue(dequeue[0]),
         .pWBM(L1_bm_L2[0]), .pWA(L1_addr_L2[0]), .pWD(L1_wd_L2[0])
     );
 
@@ -228,7 +283,7 @@ module packed_mem #(
         // + Sequential logic signals
         .CLK(CLK), .RST(RST),
         // + Control signals
-        .queue(queue[0]), .dequeue(dequeue[0]),
+        .queue(queue[1]), .dequeue(dequeue[1]),
         // + Input write content
         .addr_in(L1_addr_L2[0]), .data_in(L1_wd_L2[0]), .bm_in(L1_bm_L2[0]),
         // + Lookup signals
@@ -236,16 +291,16 @@ module packed_mem #(
         // + Output write content
         .addr_out(L1_addr_L2[1]), .data_out(L1_wd_L2[1]), .bm_out(L1_bm_L2[1]),
         // + Output control signals
-        .valid(valid[0]), .hold(full[0])
+        .valid(valid[1]), .hold(full[1])
     );
 
     // --- L2 Cache ---
     // + Cache module
     cache #(.SIZE(L2_SIZE), .WPL(WPL), .WAYS(L2_ASO), .LATENCY(L2_LATENCY)) _l2_dut (
         // + Sequential logic signals
-        .CLK(CLK), .RST(RST), .ignore(1'b0),
+        .CLK(CLK), .RST(RST), .ignore(ignore[1]),
         // + Write signals
-        .WE(valid[0]), .WBM(L1_bm_L2[1]), .WA(L1_addr_L2[1]), .WD(L1_wd_L2[1]),
+        .WE(valid[1]), .WBM(L1_bm_L2[1]), .WA(L1_addr_L2[1]), .WD(L1_wd_L2[1]),
         // + Read signals
         .RE(L2_RE), .RBM(BM), .RA(A), .RD(read_data[1]),
         // + Control signals
@@ -258,7 +313,7 @@ module packed_mem #(
         .out_addr_burst1(L2_burst_addr[0]), .out_addr_burst2(L2_burst_addr[1]),
         .out_burst1(L2_burst[0]), .out_burst2(L2_burst[1]),
         // + Write-through signals
-        .queue(queue[1]), .dequeue(dequeue[0]),
+        .queue(queue[2]), .dequeue(dequeue[1]),
         .pWBM(L2_bm_M[0]), .pWA(L2_addr_M[0]), .pWD(L2_wd_M[0])
     );
 
@@ -267,7 +322,7 @@ module packed_mem #(
         // + Sequential logic signals
         .CLK(CLK), .RST(RST),
         // + Control signals
-        .queue(queue[1]), .dequeue(1'b0),
+        .queue(queue[2]), .dequeue(dequeue[2]),
         // + Input write content
         .addr_in(L2_addr_M[0]), .data_in(L2_wd_M[0]), .bm_in(L2_bm_M[0]),
         // + Lookup signals
@@ -275,7 +330,7 @@ module packed_mem #(
         // + Output write content
         .addr_out(L2_addr_M[1]), .data_out(L2_wd_M[1]), .bm_out(L2_bm_M[1]),
         // + Output control signals
-        .valid(valid[1]), .hold(full[1])
+        .valid(valid[2]), .hold(full[2])
     );
 
     // --- Memory ---
@@ -283,7 +338,7 @@ module packed_mem #(
         // + Sequential logic signals
         .CLK(CLK), .RST(RST),
         // + Write signals
-        .WE(1'b0), .WBM(L2_bm_M[1]), .WA(L2_addr_M[1]), .WD(L2_wd_M[1]),
+        .WE(valid[2]), .WBM(L2_bm_M[1]), .WA(L2_addr_M[1]), .WD(L2_wd_M[1]),
         // + Read signals
         .RE(M_RE), .RBM(BM), .RA(A), .RD(read_data[2]),
         // + Control signals

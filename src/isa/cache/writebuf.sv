@@ -46,27 +46,7 @@ module writebuf #(
     end
 
     // --- Auxiliary functions/decoders ---
-    // 1. Boundary detection
-    // + Verifies if the given address and byte selection generates conflict with boundary crossing,
-    // which has potential to access invalid cache data blocks
-    function automatic logic is_crossing (  // auxiliary decoder for crossing detection
-        input logic [1:0] byte_offset, // byte offset
-        input logic [3:0] bm           // byte mode
-    );  
-        logic ilegal;
-
-        ilegal = 1'b0;
-        case (byte_offset)
-            2'b00: ilegal = 1'b0;
-            2'b01: if (bm == 4'b1111) ilegal = 1'b1;
-            2'b10: if (bm == 4'b1111 || bm == 4'b0111) ilegal = 1'b1;
-            2'b11: if (bm != 4'b0001) ilegal = 1'b1;
-        endcase
-
-        return ilegal;
-    endfunction
-
-    // 2. Boundary definition
+    // 1. Boundary definition
     function automatic logic [7:0] get_boundary_bits( // auxiliary decoder for detecing boundaries
         input logic [1:0] byte_offset, // byte offset
         input logic [3:0] bm           // byte mode
@@ -83,7 +63,8 @@ module writebuf #(
         return bits;
     endfunction
 
-    function automatic logic [3:0] get_selection(
+    // 2. Selection of found bits
+    function automatic logic [3:0] get_selection( // auxiliary decoder for retrieving selected bits
         input logic [1:0] byte_offset, // byte offset
         input logic [7:0] reference,   // reference bit boundaries
         input logic [7:0] overlap      // overlapping bit boundaries
@@ -153,7 +134,7 @@ module writebuf #(
             // + Get boundary bits
             assign bf_boundbits[i] = get_boundary_bits(bf_byte_offset[i], bf_bm[i]);
             assign bf_wordbits[i][0] = bf_boundbits[i][3:0];
-            assign bf_wordbits[i][1] = bf_boundbits[i][7:0];
+            assign bf_wordbits[i][1] = bf_boundbits[i][7:4]; 
         end
     endgenerate
 
@@ -405,25 +386,25 @@ module writebuf #(
             idx <= '0;
             hold <= 1'b0;
             for (int i=0; i < size; i++) begin
-                data[i] = '0;
-                address[i] = '0;
-                enables[i] = '0;
+                data[i] <= '0;
+                address[i] <= '0;
+                enables[i] <= '0;
             end
         end else begin
             hold <= (idx == size);
             if (dequeue) begin
                 for (int i = 0; i < size; i++) begin 
                     if (i == size-1) begin 
-                        data[i] = '0;
-                        address[i] = '0;
-                        enables[i] = '0;
+                        data[i] <= '0;
+                        address[i] <= '0;
+                        enables[i] <= '0;
                     end else begin
-                        data[i] = data[i+1];
-                        address[i] = address[i+1];
-                        enables[i] = enables[i+1];
+                        data[i] <= data[i+1];
+                        address[i] <= address[i+1];
+                        enables[i] <= enables[i+1];
                     end
                 end
-                idx <= idx - 1;
+                if (idx > 0) idx <= idx - 1;
             end
             if (queue) begin
                 if (idx < size) begin 

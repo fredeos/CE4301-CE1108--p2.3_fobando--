@@ -65,30 +65,34 @@ module data_memory #(
     // from 0x0 and two lower bytes from 0x4
     // SOLUTION #2: access both the inmediate lower word and the next one after it
     // to map correctly the bytes to read and write
-    logic [ADDR_WIDTH-1:0] rd_word_idx1, rd_word_idx2;
-    assign rd_word_idx1 = RA[2 +: ADDR_WIDTH];
-    assign rd_word_idx2 = rd_word_idx1 + 1;
+    logic [ADDR_WIDTH-1:0] rd_word_idx [0:1];
+    assign rd_word_idx[0] = RA[2 +: ADDR_WIDTH];
+    assign rd_word_idx[1] = rd_word_idx[0] + 1;
 
-    logic [ADDR_WIDTH-1:0] wd_word_idx1, wd_word_idx2;
-    assign wd_word_idx1 = WA[2 +: ADDR_WIDTH];
-    assign wd_word_idx2 = wd_word_idx1 + 1;
+    logic [ADDR_WIDTH-1:0] wd_word_idx [0:1];
+    assign wd_word_idx[0] = WA[2 +: ADDR_WIDTH];
+    assign wd_word_idx[1] = wd_word_idx[0] + 1;
 
     // 3. Extract the index of data block start for burst retrieval
-    logic [29:0] rd_block_idx1, rd_block_idx2;
-    assign rd_block_idx1 = RA[31:2];
-    assign rd_block_idx2 = rd_block_idx1 + 1;
+    logic [ADDR_WIDTH-1:0] rd_block_idx [0:1];
+    assign rd_block_idx[0] = {rd_word_idx[0][BLOCK_WIDTH +: ADDR_WIDTH], {BLOCK_WIDTH{1'b0}}};
+    assign rd_block_idx[1] = {rd_word_idx[1][BLOCK_WIDTH +: ADDR_WIDTH], {BLOCK_WIDTH{1'b0}}};
+
+    logic [31:0] rd_burst_addr [0:1];
+    assign rd_burst_addr[0] = {RA[31:ADDR_WIDTH], rd_block_idx[0], 2'b00};
+    assign rd_burst_addr[1] = {RA[31:ADDR_WIDTH], rd_block_idx[1], 2'b00};
 
     // --- Synchronous read (load) ---
     // + Read
     logic [7:0] rd_bytes [0:7];
-    assign rd_bytes[0] = RAM[rd_word_idx1][7:0];
-    assign rd_bytes[1] = RAM[rd_word_idx1][15:8];
-    assign rd_bytes[2] = RAM[rd_word_idx1][23:16];
-    assign rd_bytes[3] = RAM[rd_word_idx1][31:24];
-    assign rd_bytes[4] = RAM[rd_word_idx2][7:0];
-    assign rd_bytes[5] = RAM[rd_word_idx2][15:8];
-    assign rd_bytes[6] = RAM[rd_word_idx2][23:16];
-    assign rd_bytes[7] = RAM[rd_word_idx2][31:24];
+    assign rd_bytes[0] = RAM[rd_word_idx[0]][7:0];
+    assign rd_bytes[1] = RAM[rd_word_idx[0]][15:8];
+    assign rd_bytes[2] = RAM[rd_word_idx[0]][23:16];
+    assign rd_bytes[3] = RAM[rd_word_idx[0]][31:24];
+    assign rd_bytes[4] = RAM[rd_word_idx[1]][7:0];
+    assign rd_bytes[5] = RAM[rd_word_idx[1]][15:8];
+    assign rd_bytes[6] = RAM[rd_word_idx[1]][23:16];
+    assign rd_bytes[7] = RAM[rd_word_idx[1]][31:24];
     
     // + Read byte selections
     wire rd_byte1_sel = RBM[0];
@@ -98,7 +102,38 @@ module data_memory #(
 
     // + Read logic
     logic [7:0] read_data [0:3];
-    assign RD = {read_data[3], read_data[2], read_data[1], read_data[0]};
+    always_comb begin
+        read_data[0] = '0; read_data[1] = '0; read_data[2] = '0; read_data[3] = '0;
+        case (rd_byte_offset)
+            2'b00: begin 
+                if (rd_byte1_sel) read_data[0] = rd_bytes[0];
+                if (rd_byte2_sel) read_data[1] = rd_bytes[1];
+                if (rd_byte3_sel) read_data[2] = rd_bytes[2];
+                if (rd_byte4_sel) read_data[3] = rd_bytes[3];
+            end
+
+            2'b01: begin 
+                if (rd_byte1_sel) read_data[0] = rd_bytes[1];
+                if (rd_byte2_sel) read_data[1] = rd_bytes[2];
+                if (rd_byte3_sel) read_data[2] = rd_bytes[3];
+                if (rd_byte4_sel) read_data[3] = rd_bytes[4];
+            end
+
+            2'b10: begin 
+                if (rd_byte1_sel) read_data[0] = rd_bytes[2];
+                if (rd_byte2_sel) read_data[1] = rd_bytes[3];
+                if (rd_byte3_sel) read_data[2] = rd_bytes[4];
+                if (rd_byte4_sel) read_data[3] = rd_bytes[5];
+            end
+
+            2'b11: begin 
+                if (rd_byte1_sel) read_data[0] = rd_bytes[3];
+                if (rd_byte2_sel) read_data[1] = rd_bytes[4];
+                if (rd_byte3_sel) read_data[2] = rd_bytes[5];
+                if (rd_byte4_sel) read_data[3] = rd_bytes[6];
+            end
+        endcase
+    end
 
     // + Latency simulation
     logic [31:0] read_counter;
@@ -107,7 +142,7 @@ module data_memory #(
         if (RST) begin
             read_counter <= '0;
             ready[0] <= 0;
-            read_data[0] <= '0; read_data[1] <= '0; read_data[2] <= '0; read_data[3] <= '0;
+            RD <= '0;
             burst1_addr <= '0;
             burst2_addr <= '0;
             for (int i = 0; i < WPL; i++) begin
@@ -116,48 +151,21 @@ module data_memory #(
             end
         end else begin
             // >> Counter update logic <<
-            if (RE && rd_done) read_counter <= '0;
-            else if (RE) read_counter <= read_counter + 1;
-            else if (!RE)read_counter <= '0;
-            ready[0] <= rd_done;
+            if (RE) begin 
+                if (rd_done) read_counter <= '0;      // search complete
+                else read_counter <= read_counter + 1;// standby (searching)
+            end else read_counter <= '0;              // idle (not searching)
+            ready[0] <= rd_done & RE;
             // >> Read logic <<
             if (RE && rd_done) begin 
                 // Read data
-                case (rd_byte_offset)
-                    2'b00: begin 
-                        if (rd_byte1_sel) read_data[0] <= rd_bytes[0];
-                        if (rd_byte2_sel) read_data[1] <= rd_bytes[1];
-                        if (rd_byte3_sel) read_data[2] <= rd_bytes[2];
-                        if (rd_byte4_sel) read_data[3] <= rd_bytes[3];
-                    end
-
-                    2'b01: begin 
-                        if (rd_byte1_sel) read_data[0] <= rd_bytes[1];
-                        if (rd_byte2_sel) read_data[1] <= rd_bytes[2];
-                        if (rd_byte3_sel) read_data[2] <= rd_bytes[3];
-                        if (rd_byte4_sel) read_data[3] <= rd_bytes[4];
-                    end
-
-                    2'b10: begin 
-                        if (rd_byte1_sel) read_data[0] <= rd_bytes[2];
-                        if (rd_byte2_sel) read_data[1] <= rd_bytes[3];
-                        if (rd_byte3_sel) read_data[2] <= rd_bytes[4];
-                        if (rd_byte4_sel) read_data[3] <= rd_bytes[5];
-                    end
-
-                    2'b11: begin 
-                        if (rd_byte1_sel) read_data[0] <= rd_bytes[3];
-                        if (rd_byte2_sel) read_data[1] <= rd_bytes[4];
-                        if (rd_byte3_sel) read_data[2] <= rd_bytes[5];
-                        if (rd_byte4_sel) read_data[3] <= rd_bytes[6];
-                    end
-                endcase
+                RD <= {read_data[3], read_data[2], read_data[1], read_data[0]};
                 // Read bursts
-                burst1_addr <= {rd_block_idx1[29:BLOCK_WIDTH], {BLOCK_WIDTH+2{1'b0}}};
-                burst2_addr <= {rd_block_idx2[29:BLOCK_WIDTH], {BLOCK_WIDTH+2{1'b0}}};
+                burst1_addr <= rd_burst_addr[0];
+                burst2_addr <= rd_burst_addr[1];
                 for (int i = 0; i < WPL; i++) begin
-                    burst1[i] <= RAM[rd_block_idx1+i];
-                    burst2[i] <= RAM[rd_block_idx2+i];
+                    burst1[i] <= RAM[rd_block_idx[0]+i];
+                    burst2[i] <= RAM[rd_block_idx[1]+i];
                 end
             end
         end
@@ -186,38 +194,40 @@ module data_memory #(
             ready[1] <= 0;
         end else begin
             // >> Counter update logic <<
-            if (WE && wd_done) write_counter <= '0;
-            else if (WE) write_counter <= write_counter + 1;
-            ready[1] <= wd_done;
+            if (WE) begin 
+                if (wd_done) write_counter <= '0;       // search complete
+                else write_counter <= write_counter + 1;// standby (searching)
+            end else write_counter <= '0;               // idle (not searching)
+            ready[1] <= wd_done & WE;
             // >> Write logic <<
             if (WE && wd_done) begin
                 case (wd_byte_offset)
                     2'b00: begin
-                        if (wd_byte1_sel) RAM[rd_word_idx1][7:0]   <= wd_bytes[0];
-                        if (wd_byte2_sel) RAM[rd_word_idx1][15:8]  <= wd_bytes[1];
-                        if (wd_byte3_sel) RAM[rd_word_idx1][23:16] <= wd_bytes[2];
-                        if (wd_byte4_sel) RAM[rd_word_idx1][31:24] <= wd_bytes[3];
+                        if (wd_byte1_sel) RAM[wd_word_idx[0]][7:0]   <= wd_bytes[0];
+                        if (wd_byte2_sel) RAM[wd_word_idx[0]][15:8]  <= wd_bytes[1];
+                        if (wd_byte3_sel) RAM[wd_word_idx[0]][23:16] <= wd_bytes[2];
+                        if (wd_byte4_sel) RAM[wd_word_idx[0]][31:24] <= wd_bytes[3];
                     end
 
                     2'b01: begin
-                        if (wd_byte1_sel) RAM[rd_word_idx1][15:8]  <= wd_bytes[0];
-                        if (wd_byte2_sel) RAM[rd_word_idx1][23:16] <= wd_bytes[1];
-                        if (wd_byte3_sel) RAM[rd_word_idx1][31:24] <= wd_bytes[2];
-                        if (wd_byte4_sel) RAM[rd_word_idx2][7:0]   <= wd_bytes[3];
+                        if (wd_byte1_sel) RAM[wd_word_idx[0]][15:8]  <= wd_bytes[0];
+                        if (wd_byte2_sel) RAM[wd_word_idx[0]][23:16] <= wd_bytes[1];
+                        if (wd_byte3_sel) RAM[wd_word_idx[0]][31:24] <= wd_bytes[2];
+                        if (wd_byte4_sel) RAM[wd_word_idx[1]][7:0]   <= wd_bytes[3];
                     end
 
                     2'b10: begin
-                        if (wd_byte1_sel) RAM[rd_word_idx1][23:16] <= wd_bytes[0];
-                        if (wd_byte2_sel) RAM[rd_word_idx1][31:24] <= wd_bytes[1];
-                        if (wd_byte3_sel) RAM[rd_word_idx2][7:0]   <= wd_bytes[2];
-                        if (wd_byte4_sel) RAM[rd_word_idx2][15:8]  <= wd_bytes[3];
+                        if (wd_byte1_sel) RAM[wd_word_idx[0]][23:16] <= wd_bytes[0];
+                        if (wd_byte2_sel) RAM[wd_word_idx[0]][31:24] <= wd_bytes[1];
+                        if (wd_byte3_sel) RAM[wd_word_idx[1]][7:0]   <= wd_bytes[2];
+                        if (wd_byte4_sel) RAM[wd_word_idx[1]][15:8]  <= wd_bytes[3];
                     end
 
                     2'b11: begin
-                        if (wd_byte1_sel) RAM[rd_word_idx1][31:24] <= wd_bytes[0];
-                        if (wd_byte2_sel) RAM[rd_word_idx2][7:0]   <= wd_bytes[1];
-                        if (wd_byte3_sel) RAM[rd_word_idx2][15:8]  <= wd_bytes[2];
-                        if (wd_byte4_sel) RAM[rd_word_idx2][23:16] <= wd_bytes[3];
+                        if (wd_byte1_sel) RAM[wd_word_idx[0]][31:24] <= wd_bytes[0];
+                        if (wd_byte2_sel) RAM[wd_word_idx[1]][7:0]   <= wd_bytes[1];
+                        if (wd_byte3_sel) RAM[wd_word_idx[1]][15:8]  <= wd_bytes[2];
+                        if (wd_byte4_sel) RAM[wd_word_idx[1]][23:16] <= wd_bytes[3];
                     end
                 endcase
             end
