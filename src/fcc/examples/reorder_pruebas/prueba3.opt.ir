@@ -1,0 +1,58 @@
+func f1(x) -> int
+  t1 = 7
+  t2 = 8
+  a = t1
+  b = t2
+  t3 = a + b
+  c = t3
+  t4 = x + c
+  return t4
+
+func f2(y) -> int
+  t1 = 2
+  t2 = 4
+  m = t1
+  n = t2
+  t3 = m * n
+  r = t3
+  t4 = y - r
+  return t4
+
+func main() -> int
+  t1 = 6
+  t2 = 3
+  a = t1
+  b = t2
+  t3 = a * b
+  c = t3
+  param c
+  t4 = call f1, 1
+  t5 = 20
+  primero = t4
+  if primero > t5 goto L1
+  goto L2
+L1:
+  t7 = 1
+  t8 = 9
+  x = t7
+  y = t8
+  t9 = x + y
+  z = t9
+  param z
+  t10 = call f2, 1
+  segundo = t10
+  return segundo
+  goto L3
+L2:
+  t11 = 4
+  t12 = 5
+  p = t11
+  q = t12
+  t13 = p + q
+  r = t13
+  param r
+  t14 = call f1, 1
+  tercero = t14
+  return tercero
+L3:
+  return

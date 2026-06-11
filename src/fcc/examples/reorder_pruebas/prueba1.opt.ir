@@ -1,0 +1,45 @@
+func ajustar(n) -> int
+  t1 = 2
+  t2 = 3
+  a = t1
+  b = t2
+  t3 = a + b
+  c = t3
+  t4 = n + c
+  return t4
+
+func main() -> int
+  t1 = 8
+  t2 = 4
+  t4 = 10
+  x = t1
+  y = t2
+  t3 = x + y
+  z = t3
+  if z > t4 goto L1
+  goto L2
+L1:
+  t6 = 1
+  t7 = 2
+  p = t6
+  q = t7
+  t8 = p + q
+  r = t8
+  param r
+  t9 = call ajustar, 1
+  v = t9
+  return v
+  goto L3
+L2:
+  t10 = 5
+  t11 = 6
+  a = t10
+  b = t11
+  t12 = a * b
+  c = t12
+  param c
+  t13 = call ajustar, 1
+  w = t13
+  return w
+L3:
+  return

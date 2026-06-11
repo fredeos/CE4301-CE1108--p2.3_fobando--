@@ -36,7 +36,6 @@ class SafeInstructionReorderer:
             "return",
             "param",
             "call",
-            "read",
             "store_index",
             "store_deref",
             "load_index",
@@ -146,7 +145,6 @@ class SafeInstructionReorderer:
         """
         Reordena un segmento de instrucciones puras respetando RAW/WAR/WAW.
 
-        Usa una idea tipo orden topológico:
         - Si instr A debe ir antes que instr B, se crea una dependencia A -> B.
         - Luego se genera un nuevo orden que respeta esas dependencias.
         """

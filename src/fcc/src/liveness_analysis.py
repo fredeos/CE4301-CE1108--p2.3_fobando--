@@ -4,6 +4,7 @@ from basic_blocks import BasicBlock, FunctionBlocks, ProgramBlocks
 from ir_nodes import IRInstruction
 from typing import Dict, Set
 
+
 @dataclass
 class LivenessResult:
     gen: Dict[str, Set[str]] = field(default_factory=dict)
@@ -19,7 +20,6 @@ class LivenessAnalyzer:
             result = self.analyze_function(function_blocks)
             results[function_blocks.function_name] = result
         return results
-
 
     def analyze_function(self, function_blocks: FunctionBlocks) -> LivenessResult:
         liveness = LivenessResult()
@@ -44,7 +44,7 @@ class LivenessAnalyzer:
         # changed nos va a ayudar a verificar que ya no hay cambios en las iteraciones
         changed = True
         while changed:
-            changed = False # para salirnos a la siguiente iteracion
+            changed = False  # para salirnos a la siguiente iteracion
 
             for b in reversed_blocks:
                 old_in = set(liveness.in_sets[b.name])
@@ -83,5 +83,3 @@ class LivenessAnalyzer:
             if defined is not None:
                 kill.add(defined)
         return gen, kill
-
-
