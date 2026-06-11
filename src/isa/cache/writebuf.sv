@@ -380,19 +380,27 @@ module writebuf #(
     assign hits = lk_thits[size-1];
 
     // --- Writing logic (synchronous) ---
-    logic [31:0] idx;
+    logic [31:0] idx, next_idx;
+    wire queue_possible = queue & (idx < size);
+    wire dequeue_possible = dequeue & (idx > 0);
+    always_comb begin
+        next_idx = idx;
+        if (queue_possible) next_idx = idx + 1;
+        if (dequeue_possible) next_idx = idx - 1;
+        if (queue_possible && dequeue_possible) next_idx = idx;
+    end
+
     always_ff @(negedge CLK, posedge RST) begin
         if (RST) begin
             idx <= '0;
-            hold <= 1'b0;
             for (int i=0; i < size; i++) begin
                 data[i] <= '0;
                 address[i] <= '0;
                 enables[i] <= '0;
             end
         end else begin
-            hold <= (idx == size);
-            if (dequeue) begin
+            idx <= next_idx;
+            if (dequeue_possible) begin
                 for (int i = 0; i < size; i++) begin 
                     if (i == size-1) begin 
                         data[i] <= '0;
@@ -404,20 +412,17 @@ module writebuf #(
                         enables[i] <= enables[i+1];
                     end
                 end
-                if (idx > 0) idx <= idx - 1;
             end
-            if (queue) begin
-                if (idx < size) begin 
-                    address[idx] <= addr_in;
-                    data[idx] <= data_in;
-                    enables[idx] <= {1'b1, bm_in};
-                    idx <= idx + 1;
-                end
+            if (queue_possible) begin
+                address[idx] <= addr_in;
+                data[idx] <= data_in;
+                enables[idx] <= {1'b1, bm_in};
             end
         end
     end
 
     // --- Content output logic ---
+    assign hold = (idx == size);
     assign addr_out = address[0];
     assign data_out = data[0];
     assign bm_out   = enables[0][3:0];

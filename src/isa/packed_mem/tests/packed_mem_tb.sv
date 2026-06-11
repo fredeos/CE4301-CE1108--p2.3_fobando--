@@ -1,5 +1,5 @@
 module packed_mem_tb ();
-    logic clk, rst, ready, re, we;
+    logic clk, rst, ready, re, we, halt;
     logic [3:0]  bm;
     logic [31:0] addr, rd, wd;
 
@@ -18,7 +18,7 @@ module packed_mem_tb ();
         .BM(bm), .A(addr),
         .WD(wd),
         .RD(rd),
-        .ready(ready)
+        .ready(ready), .halt(halt)
     );
 
     always #5 clk = ~clk;
@@ -111,6 +111,8 @@ module packed_mem_tb ();
     endtask
 
     task task_write(input [31:0] address, input [3:0] mask, input [31:0] data, input int cycles);
+        int i;
+        bit stall;
         begin
             $display("+ TASK_WRITE: A[0x%0d], BM[%b], WD[%h]", address, mask, data);
             #5;
@@ -118,10 +120,14 @@ module packed_mem_tb ();
             addr = address;
             bm = mask;
             wd = data;
-            for (int i = 0; i < cycles; i++) begin 
+            i = 0; stall = 0;
+            while (i < cycles | stall) begin
                 #10;
-                if (we) we = 1'b0;
                 $display("[%0d] Data is being written...", i+1);
+                if (halt) we = 1'b1;
+                else we = 1'b0;
+                stall = halt;
+                i = i + 1;
             end
             we = 1'b0;
             addr = '0;

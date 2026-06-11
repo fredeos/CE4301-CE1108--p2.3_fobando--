@@ -29,6 +29,7 @@ module packed_mem #(
     output logic [31:0] RD, // read data
     // + Output control signals
     output logic ready,            // read ready signal
+    output logic halt,             // write halt signal
     output logic [1:0] read_miss,  // [0]: L1, [1]: L2
     output logic [1:0] write_miss  // [0]: L1, [1]: L2
 );
@@ -56,7 +57,7 @@ module packed_mem #(
     assign write_miss = {L2_write_miss, L1_write_miss};
 
     // 2. Data signals
-    logic [31:0] read_data [0:2]; // (READ DATA) [0]: L1, [1]: L2, [2]: MEM
+    logic [31:0] read_data [0:2];   // (READ DATA) [0]: L1, [1]: L2, [2]: MEM
     logic [3:0][7:0] rd_bytes [0:2];
 
     generate
@@ -83,7 +84,6 @@ module packed_mem #(
     logic [2:0] queue, dequeue; // [0]: IN, [1]: L1, [2]: L2
     logic [2:0] valid, full;    // [0]: IN, [1]: L1, [2]: L2
 
-    assign queue[0]   = WE;
     assign dequeue[2] = M_rdy[1];
 
     logic [3:0]  IN_bm_L1   [0:1]; // (L1-L2 byte mode) [0]: input, [1]: output
@@ -126,11 +126,9 @@ module packed_mem #(
     wire L2_hit3_M = L2_hits_M[2];
     wire L2_hit4_M = L2_hits_M[3];
 
-    // --- Memory access FSM ---
+    // --- Memory reading FSM ---
     // NOTE #1: This finite state machine allows controlling the memory for initiating data reading
     // and filling missing lines (miss penalty)
-    // NOTE #2: Writing on memory is controlled by the write buffers which handle propagating data
-    // to higher memory levels
     logic [2:0] state;
     always_ff @(posedge CLK, posedge RST) begin 
         if (RST) begin
@@ -146,7 +144,7 @@ module packed_mem #(
             state <= 3'b000;
         end else begin
             case (state)
-                3'b000:  begin // idle
+                3'b000:  begin // WD_idle
                     ready <= 1'b0;
                     RD <= '0;
                     if (RE) state <= 3'b001; // go-to L1
@@ -160,7 +158,7 @@ module packed_mem #(
                     RD[23:16] <= (IN_hit3_L1) ? IN_rd_L1[2] : rd_bytes[0][2];
                     RD[31:24] <= (IN_hit4_L1) ? IN_rd_L1[3] : rd_bytes[0][3];
                     if (L1_read_miss) state <= 3'b010;     // go-to L2
-                    else if (L1_read_hit) state <= 3'b000; // go back to idle
+                    else if (L1_read_hit) state <= 3'b000; // go back to WD_idle
                 end
 
                 3'b010: begin // Search on L2
@@ -219,7 +217,7 @@ module packed_mem #(
                 3'b110: begin // Forwarding fix transition state
                     ignore <= 2'b00;
                     ready <= 1'b1;
-                    state <= 3'b000; // go back to idle
+                    state <= 3'b000; // go back to WD_idle
                 end
 
                 default: begin
@@ -230,6 +228,7 @@ module packed_mem #(
             endcase
         end
     end
+
     // 1. Set read enable bits
     wire L1_RE = ((state == 3'b000) | (state == 3'b001)) & RE;
     wire L2_RE = (state == 3'b010);
@@ -239,9 +238,50 @@ module packed_mem #(
     wire L1_fml = (state == 3'b100); // fill missing lines for L1
     wire L2_fml = (state == 3'b101); // fill missing lines for L2
 
+    // --- Memory writing FSM ---
+    // + The objective of this FSM is to control the 'halt' signal to garantue that data is able to written
+    // to the write buffers
+    // NOTE #2: Writing on memory is controlled by the write buffers which handle propagating data
+    // to higher memory levels
+    logic [1:0] wd_state, wd_next_state;
+    always_ff @(posedge CLK, posedge RST) begin 
+        if (RST) begin
+            wd_state <= 2'b00;
+        end begin 
+            wd_state <= wd_next_state;
+        end
+    end
+
+    wire write_path_full = full[0] | full[1] | full[2];
+    always_comb begin
+        case (wd_state)
+            2'b00: begin
+                halt = 1'b0;
+                wd_next_state = (WE) ? 2'b01 : 2'b00;
+            end
+            
+            2'b01: begin
+                halt = 1'b1;
+                wd_next_state = (write_path_full) ? 2'b01 : 2'b10;
+            end
+
+            2'b10: begin 
+                halt = 1'b0;
+                wd_next_state = 2'b00;
+            end
+
+            default: begin
+                halt = 1'b0;
+                wd_next_state = 2'b00;
+            end
+        endcase
+    end
+
+    assign queue[0] = (wd_state == 2'b10);
+
     // --- L1 Cache ---
     // + Write buffer IN-L1
-    writebuf #(.size(6)) _in_writebuf (
+    writebuf #(.size(4)) _in_writebuf (
         // + Sequential logic signals
         .CLK(CLK), .RST(RST),
         // + Control signals
