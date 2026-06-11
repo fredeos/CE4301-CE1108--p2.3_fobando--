@@ -7,7 +7,6 @@ from pprint import pprint
 import sys
 from textwrap import dedent
 
-
 PROJECT_ROOT = Path(__file__).resolve().parent
 SRC_PATH = PROJECT_ROOT / "src"
 if str(SRC_PATH) not in sys.path:
@@ -150,18 +149,21 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "-O",
         "--opt-level",
-        choices=["0", "1", "2", "3", "O0", "O1", "O2", "O3"],
+        choices=["0", "1", "2", "3", "4", "O0", "O1", "O2", "O3", "O4"],
         default="0",
-        metavar="<0|1|2>",
+        metavar="<0|1|2|3|4>",
         help=(
             "Nivel de optimizacion: O0 sin cambios; O1 renombra temporales/estaticos y baja por ASM desde TAC; "
             "O2 agrega loop unrolling parcial con factor configurable."
+            "O3 realiza eliminación de código muerto usando analisis de variables vivas;"
+            "O4 aplica reordenamiento seguro de instrucciones dentro de bloques basicos."
         ),
     )
     parser.add_argument("-O0", action="store_const", const="0", dest="opt_level", help="Equivale a -O 0.")
     parser.add_argument("-O1", action="store_const", const="1", dest="opt_level", help="Equivale a -O 1.")
     parser.add_argument("-O2", action="store_const", const="2", dest="opt_level", help="Equivale a -O 2.")
     parser.add_argument("-O3", action="store_const", const="3", dest="opt_level", help="Equivale a -O 3.")
+    parser.add_argument("-O4", action="store_const", const="4", dest="opt_level", help="Equivale a -O 4.")
     parser.add_argument(
         "--unroll-factor",
         type=int,
@@ -292,9 +294,10 @@ def validate_optimization_options(options: dict[str, object]) -> str | None:
 
 def optimization_enabled(options: dict[str, object]) -> bool:
     return (
-        bool(options["rename_statics"])
-        or int(options["unroll_factor"]) > 1
-        or str(options["opt_level"]) == "O3"
+            bool(options["rename_statics"])
+            or int(options["unroll_factor"]) > 1
+            or str(options["opt_level"]) == "O3"
+            or str(options["opt_level"]) == "O4"
     )
 
 
@@ -339,10 +342,10 @@ def install_to_user_path() -> int:
     target_dir = str(PROJECT_ROOT)
     try:
         with winreg.OpenKey(
-            winreg.HKEY_CURRENT_USER,
-            r"Environment",
-            0,
-            winreg.KEY_READ | winreg.KEY_WRITE,
+                winreg.HKEY_CURRENT_USER,
+                r"Environment",
+                0,
+                winreg.KEY_READ | winreg.KEY_WRITE,
         ) as key:
             try:
                 current_path, reg_type = winreg.QueryValueEx(key, "Path")
@@ -444,7 +447,7 @@ def main():
 
     if args.ir or args.blocks or args.optimized_ir or args.emit_ir_files:
         ir_program = build_ir(ast)
-        print(ir_program)
+        # print(ir_program)
         has_optimizations = optimization_enabled(opt_options)
         display_program = ir_program
         report = None

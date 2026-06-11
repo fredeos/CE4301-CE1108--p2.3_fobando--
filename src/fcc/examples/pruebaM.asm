@@ -11,7 +11,7 @@ __halt__:    # addr=20
 main:    # addr=24
     addi sp, sp, 28
     stw ra, +0(sp)
-    li r0, 10
+    li r0, 20
     stw r0, +16(sp)
     ldw r0, +16(sp)
     stw r0, +8(sp)

@@ -6,6 +6,7 @@ from typing import Dict, List, Optional, Set, Tuple
 
 from ir_nodes import IRFunction, IRInstruction, IRProgram, clone_instructions
 from dead_code_elimination import DeadCodeEliminator
+from instruction_reordering import SafeInstructionReorderer
 
 
 UNROLL_BODY_INSTRUCTION_BUDGET = 96
@@ -45,6 +46,7 @@ class OptimizationReport:
     unroll_limits: List[str] = field(default_factory=list)
     renamed_defs: int = 0
     dead_code_removed: int = 0
+    reordered_instructions: int = 0
     opt_level: str = "O0"
     unroll_factor: int = 1
     rename_statics: bool = False
@@ -58,6 +60,8 @@ class OptimizationReport:
         lines.append(f"  Renombramientos aplicados: {self.renamed_defs}")
         lines.append(f"  Eliminación de código muerto: {'sí' if self.opt_level == 'O3' else 'no'}")
         lines.append(f"  Instrucciones eliminadas por DCE: {self.dead_code_removed}")
+        lines.append(f"  Reordenamiento seguro: {'sí' if self.opt_level == 'O4' else 'no'}")
+        lines.append(f"  Instrucciones reordenadas: {self.reordered_instructions}")
         if self.loop_unrolled:
             lines.append("  Loops desenrollados:")
             for item in self.loop_unrolled:
@@ -131,10 +135,14 @@ class IROptimizer:
                 current = self.rename_static_dependencies(current, protected_names=global_names)
             optimized.functions.append(current)
 
-        # el dce va fuera del for ya que recibe un IRProgram completo
+        # El dce va fuera del for, ya que recibe un IRProgram completo
         if opt_level == "O3":
             optimized, dce_result = DeadCodeEliminator().eliminate(optimized)
             self.report.dead_code_removed = dce_result.removed_count
+
+        if opt_level == "O4":
+            optimized, reordered_count = SafeInstructionReorderer().reorder_program(optimized)
+            self.report.reordered_instructions = reordered_count
         return optimized, self.report
 
     def analyze_unroll_limits(self, program: IRProgram, heuristic: bool = True) -> List[LoopUnrollLimit]:

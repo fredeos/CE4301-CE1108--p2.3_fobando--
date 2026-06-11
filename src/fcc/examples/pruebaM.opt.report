@@ -4,4 +4,4 @@ Reporte de optimizacion IR:
   Renombramiento de temporales/estaticos: no
   Renombramientos aplicados: 0
   Eliminación de código muerto: sí
-  Instrucciones eliminadas por DCE: 6
+  Instrucciones eliminadas por DCE: 8

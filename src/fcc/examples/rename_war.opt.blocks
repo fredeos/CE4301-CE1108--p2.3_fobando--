@@ -1,12 +1,12 @@
 bloques main:
 main_B0:
-  t1_1 = 10
-  x_1 = t1_1
-  t2_1 = 5
-  t3_1 = x_1 + t2_1
-  y_1 = t3_1
-  t4_1 = 3
-  x_2 = t4_1
-  t5_1 = y_1 * x_2
-  z_1 = t5_1
-  return z_1
+  t1 = 10
+  t2 = 5
+  t4 = 3
+  x = t1
+  t3 = x + t2
+  y = t3
+  x = t4
+  t5 = y * x
+  z = t5
+  return z

@@ -2,9 +2,14 @@ bloques factorial:
 factorial_B0:
   succ: factorial_while_cond_1
   t1 = 1
-  resultado = t1
   t2 = 1
+  t3 = 15
+  t4 = 16
+  resultado = t1
   i = t2
+  m = t3
+  t5 = m + t4
+  m = t5
 
 factorial_while_cond_1:
   pred: factorial_B0, factorial_B2
@@ -15,11 +20,13 @@ factorial_while_cond_1:
 factorial_B2:
   pred: factorial_while_cond_1
   succ: factorial_while_cond_1
+  t8 = 12
+  t9 = 1
   t7 = resultado * i
+  t10 = i + t9
   resultado = t7
-  t8 = 1
-  t9 = i + t8
-  i = t9
+  m = t8
+  i = t10
   goto factorial_while_cond_1
 
 factorial_while_end_2:
