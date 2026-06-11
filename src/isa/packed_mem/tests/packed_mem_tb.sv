@@ -55,6 +55,9 @@ module packed_mem_tb ();
         // 5. Lectura parcial sin miss
         $display("\n Lectura de un dato sin miss");
         task_read(32'd18, 4'b0111);
+        // 6. Lectura con miss forzado para reemplazo de linea
+        $display("\n Lectura con miss forzado para reemplazo de linea");
+        task_read(32'd32, 4'b1111);
 
         // --- Pruebas de escritura ---
         $display("-------------------[Pruebas de escritura]-------------------");
@@ -67,8 +70,8 @@ module packed_mem_tb ();
         // 3. Escritura adelantada desde el buffer de memoria
         $display("\n Escritura adelantada desde el buffer de memoria");
         task_write(32'd24, 4'b0011, 32'hFFFFFFFF, 1);
-        task_read(32'd24, 4'b1111);
-        task_read(32'd28, 4'b1111);
+        task_read(32'd24, 4'b1111); // aqui el dato aun no se ha esrito (estaria en el buffer)
+        task_read(32'd28, 4'b1111); // aqui ya el dato estaria escrito entonces se completa la linea en L1 y L2
 
         // --- Volcado de memoria ---
         $display("\n[SISTEMA] Generando archivos de salida...");
