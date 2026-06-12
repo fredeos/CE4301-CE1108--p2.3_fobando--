@@ -28,7 +28,8 @@ module packed_mem #(
     input  logic [31:0] WD, // write data
     output logic [31:0] RD, // read data
     // + Output control signals
-    output logic ready,
+    output logic ready,            // read ready signal
+    output logic halt,             // write halt signal
     output logic [1:0] read_miss,  // [0]: L1, [1]: L2
     output logic [1:0] write_miss  // [0]: L1, [1]: L2
 );
@@ -36,6 +37,7 @@ module packed_mem #(
     // 1. Control signals
     logic [1:0] L1_hits, L2_hits; // (READ&WRITE HITS) [0]: read, [1]: write
     logic [1:0] locked;           // ($ LOCK STATUS)   [0]: L1,   [1]: L2
+    logic [1:0] ignore;           // ($ MISS IGNORE)   [0]: L1,   [1]: L2
     logic [1:0] L1_rdy, L2_rdy;   // (READY STATUS)    [0]: read, [1]: write
     logic [1:0] M_rdy;            // (READY STATUS)    [0]: read, [1]: write
 
@@ -55,7 +57,18 @@ module packed_mem #(
     assign write_miss = {L2_write_miss, L1_write_miss};
 
     // 2. Data signals
-    logic [31:0] read_data [0:2]; // (READ DATA) [0]: L1, [1]: L2, [2]: MEM
+    logic [31:0] read_data [0:2];   // (READ DATA) [0]: L1, [1]: L2, [2]: MEM
+    logic [3:0][7:0] rd_bytes [0:2];
+
+    generate
+        genvar i;
+        for (i = 0; i < 3; i++) begin
+            assign rd_bytes[i][0] = read_data[i][7:0];
+            assign rd_bytes[i][1] = read_data[i][15:8];
+            assign rd_bytes[i][2] = read_data[i][23:16];
+            assign rd_bytes[i][3] = read_data[i][31:24];
+        end
+    endgenerate
 
     // 3. Burst signals
     logic [31:0] burst_addr [0:1];       // [0]: burst1, [1]: burst2
@@ -68,10 +81,18 @@ module packed_mem #(
     logic [WPL-1:0][31:0] M_burst [0:1]; // [0]: burst1, [1]: burst2
 
     // 4. Write-through buffer signals
-    logic [1:0] queue, dequeue; // [0]: L1, [1]: L2
-    logic [1:0] valid, full;    // [0]: L1, [1]: L2
+    logic [2:0] queue, dequeue; // [0]: IN, [1]: L1, [2]: L2
+    logic [2:0] valid, full;    // [0]: IN, [1]: L1, [2]: L2
 
-    assign dequeue[1] = M_rdy[1];
+    assign dequeue[2] = M_rdy[1];
+
+    logic [3:0]  IN_bm_L1   [0:1]; // (L1-L2 byte mode) [0]: input, [1]: output
+    logic [31:0] IN_addr_L1 [0:1]; // (L1-L2 address)   [0]: input, [1]: output
+    logic [31:0] IN_wd_L1   [0:1]; // (L1-L2 write data)[0]: input, [1]: output
+
+    assign IN_bm_L1[0] = BM;
+    assign IN_addr_L1[0] = A;
+    assign IN_wd_L1[0] = WD;
 
     logic [3:0]  L1_bm_L2   [0:1]; // (L1-L2 byte mode) [0]: input, [1]: output
     logic [31:0] L1_addr_L2 [0:1]; // (L1-L2 address)   [0]: input, [1]: output
@@ -81,16 +102,39 @@ module packed_mem #(
     logic [31:0] L2_addr_M [0:1]; // (L2-M address)   [0]: input, [1]: output
     logic [31:0] L2_wd_M   [0:1]; // (L2-M write data)[0]: input, [1]: output
 
-    // --- Memory access FSM ---
+    logic [3:0][7:0] IN_rd_L1;
+    logic [3:0] IN_hits_L1;
+
+    wire IN_hit1_L1 = IN_hits_L1[0];
+    wire IN_hit2_L1 = IN_hits_L1[1];
+    wire IN_hit3_L1 = IN_hits_L1[2];
+    wire IN_hit4_L1 = IN_hits_L1[3];
+
+    logic [3:0][7:0] L1_rd_L2;
+    logic [3:0] L1_hits_L2;
+
+    wire L1_hit1_L2 = L1_hits_L2[0];
+    wire L1_hit2_L2 = L1_hits_L2[1];
+    wire L1_hit3_L2 = L1_hits_L2[2];
+    wire L1_hit4_L2 = L1_hits_L2[3];
+
+    logic [3:0][7:0] L2_rd_M;
+    logic [3:0] L2_hits_M;
+
+    wire L2_hit1_M = L2_hits_M[0];
+    wire L2_hit2_M = L2_hits_M[1];
+    wire L2_hit3_M = L2_hits_M[2];
+    wire L2_hit4_M = L2_hits_M[3];
+
+    // --- Memory reading FSM ---
     // NOTE #1: This finite state machine allows controlling the memory for initiating data reading
     // and filling missing lines (miss penalty)
-    // NOTE #2: Writing on memory is controlled by the write buffers which handle propagating data
-    // to higher memory levels
     logic [2:0] state;
     always_ff @(posedge CLK, posedge RST) begin 
         if (RST) begin
             ready <= 1'b0;
             RD <= '0;
+            ignore <= '0;
             burst_addr[0] <= '0;
             burst_addr[1] <= '0;
             for (int i = 0; i < WPL; i++) begin 
@@ -100,22 +144,30 @@ module packed_mem #(
             state <= 3'b000;
         end else begin
             case (state)
-                3'b000:  begin // idle
+                3'b000:  begin // WD_idle
                     ready <= 1'b0;
                     RD <= '0;
-                    state <= 3'b001; // go-to L1
+                    if (RE) state <= 3'b001; // go-to L1
                 end
 
                 3'b001: begin // Search on L1
                     ready <= L1_read_hit;
-                    RD <= read_data[0];
+                    //RD <= read_data[0];
+                    RD[7:0]   <= (IN_hit1_L1) ? IN_rd_L1[0] : rd_bytes[0][0];
+                    RD[15:8]  <= (IN_hit2_L1) ? IN_rd_L1[1] : rd_bytes[0][1];
+                    RD[23:16] <= (IN_hit3_L1) ? IN_rd_L1[2] : rd_bytes[0][2];
+                    RD[31:24] <= (IN_hit4_L1) ? IN_rd_L1[3] : rd_bytes[0][3];
                     if (L1_read_miss) state <= 3'b010;     // go-to L2
-                    else if (L1_read_hit) state <= 3'b000; // go back to idle
+                    else if (L1_read_hit) state <= 3'b000; // go back to WD_idle
                 end
 
                 3'b010: begin // Search on L2
                     ready <= 1'b0;
-                    RD <= read_data[1];
+                    //RD <= read_data[1];
+                    RD[7:0]   <= (L1_hit1_L2) ? L1_rd_L2[0] : rd_bytes[1][0];
+                    RD[15:8]  <= (L1_hit2_L2) ? L1_rd_L2[1] : rd_bytes[1][1];
+                    RD[23:16] <= (L1_hit3_L2) ? L1_rd_L2[2] : rd_bytes[1][2];
+                    RD[31:24] <= (L1_hit4_L2) ? L1_rd_L2[3] : rd_bytes[1][3];
                     burst_addr[0] <= L2_burst_addr[0];
                     burst_addr[1] <= L2_burst_addr[1];
                     for (int i = 0; i < WPL; i++) begin 
@@ -123,19 +175,33 @@ module packed_mem #(
                         burst[1][i] <= L2_burst[1][i];
                     end
                     if (L2_read_miss) state <= 3'b011;     // go-to M
-                    else if (L2_read_hit) state <= 3'b100; // fill missing lines on L1
+                    else if (L2_read_hit) begin 
+                        if (|L1_hits_L2) begin 
+                            ignore <= 2'b01;
+                            state <= 3'b110; // data was forwarded, but burst is outdated
+                        end else state <= 3'b100; // fill missing lines on L1
+                    end
                 end
 
                 3'b011: begin // Search on M
                     ready <= 1'b0;
-                    RD <= read_data[2];
+                    //RD <= read_data[2];
+                    RD[7:0]   <= (L2_hit1_M) ? L2_rd_M[0] : rd_bytes[2][0];
+                    RD[15:8]  <= (L2_hit2_M) ? L2_rd_M[1] : rd_bytes[2][1];
+                    RD[23:16] <= (L2_hit3_M) ? L2_rd_M[2] : rd_bytes[2][2];
+                    RD[31:24] <= (L2_hit4_M) ? L2_rd_M[3] : rd_bytes[2][3];
                     burst_addr[0] <= M_burst_addr[0];
                     burst_addr[1] <= M_burst_addr[1];
                     for (int i = 0; i < WPL; i++) begin 
                         burst[0][i] <= M_burst[0][i];
                         burst[1][i] <= M_burst[1][i];
                     end
-                    if (M_rdy[0]) state <= 3'b101; // fill missing lines on L2 and L1
+                    if (M_rdy[0]) begin
+                        if (|L2_hits_M) begin
+                            ignore <= 2'b11;
+                            state <= 3'b110; // data was forwarded, but burst is outdated
+                        end else state <= 3'b101; // fill missing lines on L2 and L1
+                    end
                 end
 
                 3'b100: begin // L1 miss penalty (fill missing lines)
@@ -148,6 +214,12 @@ module packed_mem #(
                     state <= 3'b100; // fill missig lines on L1
                 end
 
+                3'b110: begin // Forwarding fix transition state
+                    ignore <= 2'b00;
+                    ready <= 1'b1;
+                    state <= 3'b000; // go back to WD_idle
+                end
+
                 default: begin
                     ready <= 1'b0;
                     RD <= '0;
@@ -156,6 +228,7 @@ module packed_mem #(
             endcase
         end
     end
+
     // 1. Set read enable bits
     wire L1_RE = ((state == 3'b000) | (state == 3'b001)) & RE;
     wire L2_RE = (state == 3'b010);
@@ -165,13 +238,70 @@ module packed_mem #(
     wire L1_fml = (state == 3'b100); // fill missing lines for L1
     wire L2_fml = (state == 3'b101); // fill missing lines for L2
 
+    // --- Memory writing FSM ---
+    // + The objective of this FSM is to control the 'halt' signal to garantue that data is able to written
+    // to the write buffers
+    // NOTE #2: Writing on memory is controlled by the write buffers which handle propagating data
+    // to higher memory levels
+    logic [1:0] wd_state, wd_next_state;
+    always_ff @(posedge CLK, posedge RST) begin 
+        if (RST) begin
+            wd_state <= 2'b00;
+        end begin 
+            wd_state <= wd_next_state;
+        end
+    end
+
+    wire write_path_full = full[0] | full[1] | full[2];
+    always_comb begin
+        case (wd_state)
+            2'b00: begin
+                halt = 1'b0;
+                wd_next_state = (WE) ? 2'b01 : 2'b00;
+            end
+            
+            2'b01: begin
+                halt = 1'b1;
+                wd_next_state = (write_path_full) ? 2'b01 : 2'b10;
+            end
+
+            2'b10: begin 
+                halt = 1'b0;
+                wd_next_state = 2'b00;
+            end
+
+            default: begin
+                halt = 1'b0;
+                wd_next_state = 2'b00;
+            end
+        endcase
+    end
+
+    assign queue[0] = (wd_state == 2'b10);
+
     // --- L1 Cache ---
+    // + Write buffer IN-L1
+    writebuf #(.size(4)) _in_writebuf (
+        // + Sequential logic signals
+        .CLK(CLK), .RST(RST),
+        // + Control signals
+        .queue(queue[0]), .dequeue(dequeue[0]),
+        // + Input write content
+        .addr_in(IN_addr_L1[0]), .data_in(IN_wd_L1[0]), .bm_in(IN_bm_L1[0]),
+        // + Lookup signals
+        .A(A), .BM(BM), .RD(IN_rd_L1), .hits(IN_hits_L1),
+        // + Output write content
+        .addr_out(IN_addr_L1[1]), .data_out(IN_wd_L1[1]), .bm_out(IN_bm_L1[1]),
+        // + Output control signals
+        .valid(valid[0]), .hold(full[0])
+    );
+
     // + Cache module
     cache #(.SIZE(L1_SIZE), .WPL(WPL), .WAYS(L1_ASO), .LATENCY(L1_LATENCY)) _l1_dut (
         // + Sequential logic signals
-        .CLK(CLK), .RST(RST), .ignore(1'b0),
+        .CLK(CLK), .RST(RST), .ignore(ignore[0]),
         // + Write signals
-        .WE(WE), .WBM(BM), .WA(A), .WD(WD),
+        .WE(valid[0]), .WBM(IN_bm_L1[1]), .WA(IN_addr_L1[1]), .WD(IN_wd_L1[1]),
         // + Read signals
         .RE(L1_RE), .RBM(BM), .RA(A), .RD(read_data[0]),
         // + Control signals
@@ -184,26 +314,33 @@ module packed_mem #(
         .out_addr_burst1(), .out_addr_burst2(),
         .out_burst1(), .out_burst2(),
         // + Write-through signals
-        .queue(queue[0]), .dequeue(),
+        .queue(queue[1]), .dequeue(dequeue[0]),
         .pWBM(L1_bm_L2[0]), .pWA(L1_addr_L2[0]), .pWD(L1_wd_L2[0])
     );
 
     // + Write buffer L1-L2
     writebuf #(.size(6)) _l1_writebuf (
+        // + Sequential logic signals
         .CLK(CLK), .RST(RST),
-        .queue(queue[0]), .dequeue(dequeue[0]),
+        // + Control signals
+        .queue(queue[1]), .dequeue(dequeue[1]),
+        // + Input write content
         .addr_in(L1_addr_L2[0]), .data_in(L1_wd_L2[0]), .bm_in(L1_bm_L2[0]),
+        // + Lookup signals
+        .A(A), .BM(BM), .RD(L1_rd_L2), .hits(L1_hits_L2),
+        // + Output write content
         .addr_out(L1_addr_L2[1]), .data_out(L1_wd_L2[1]), .bm_out(L1_bm_L2[1]),
-        .valid(valid[0]), .hold(full[0])
+        // + Output control signals
+        .valid(valid[1]), .hold(full[1])
     );
 
     // --- L2 Cache ---
     // + Cache module
     cache #(.SIZE(L2_SIZE), .WPL(WPL), .WAYS(L2_ASO), .LATENCY(L2_LATENCY)) _l2_dut (
         // + Sequential logic signals
-        .CLK(CLK), .RST(RST), .ignore(1'b0),
+        .CLK(CLK), .RST(RST), .ignore(ignore[1]),
         // + Write signals
-        .WE(valid[0]), .WBM(L1_bm_L2[1]), .WA(L1_addr_L2[1]), .WD(L1_wd_L2[1]),
+        .WE(valid[1]), .WBM(L1_bm_L2[1]), .WA(L1_addr_L2[1]), .WD(L1_wd_L2[1]),
         // + Read signals
         .RE(L2_RE), .RBM(BM), .RA(A), .RD(read_data[1]),
         // + Control signals
@@ -216,17 +353,24 @@ module packed_mem #(
         .out_addr_burst1(L2_burst_addr[0]), .out_addr_burst2(L2_burst_addr[1]),
         .out_burst1(L2_burst[0]), .out_burst2(L2_burst[1]),
         // + Write-through signals
-        .queue(queue[1]), .dequeue(dequeue[0]),
+        .queue(queue[2]), .dequeue(dequeue[1]),
         .pWBM(L2_bm_M[0]), .pWA(L2_addr_M[0]), .pWD(L2_wd_M[0])
     );
 
     // + Write buffer L2-M
     writebuf #(.size(6)) _l2_writebuf (
+        // + Sequential logic signals
         .CLK(CLK), .RST(RST),
-        .queue(queue[1]), .dequeue(dequeue[1]),
+        // + Control signals
+        .queue(queue[2]), .dequeue(dequeue[2]),
+        // + Input write content
         .addr_in(L2_addr_M[0]), .data_in(L2_wd_M[0]), .bm_in(L2_bm_M[0]),
+        // + Lookup signals
+        .A(A), .BM(BM), .RD(L2_rd_M), .hits(L2_hits_M),
+        // + Output write content
         .addr_out(L2_addr_M[1]), .data_out(L2_wd_M[1]), .bm_out(L2_bm_M[1]),
-        .valid(valid[1]), .hold(full[1])
+        // + Output control signals
+        .valid(valid[2]), .hold(full[2])
     );
 
     // --- Memory ---
@@ -234,7 +378,7 @@ module packed_mem #(
         // + Sequential logic signals
         .CLK(CLK), .RST(RST),
         // + Write signals
-        .WE(valid[1]), .WBM(L2_bm_M[1]), .WA(L2_addr_M[1]), .WD(L2_wd_M[1]),
+        .WE(valid[2]), .WBM(L2_bm_M[1]), .WA(L2_addr_M[1]), .WD(L2_wd_M[1]),
         // + Read signals
         .RE(M_RE), .RBM(BM), .RA(A), .RD(read_data[2]),
         // + Control signals

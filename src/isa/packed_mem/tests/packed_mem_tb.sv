@@ -1,5 +1,5 @@
 module packed_mem_tb ();
-    logic clk, rst, ready, re, we;
+    logic clk, rst, ready, re, we, halt;
     logic [3:0]  bm;
     logic [31:0] addr, rd, wd;
 
@@ -18,7 +18,7 @@ module packed_mem_tb ();
         .BM(bm), .A(addr),
         .WD(wd),
         .RD(rd),
-        .ready(ready)
+        .ready(ready), .halt(halt)
     );
 
     always #5 clk = ~clk;
@@ -33,17 +33,46 @@ module packed_mem_tb ();
         addr = '0;
         wd = '0;
         bm = 4'b0000;
-        we = 0;
+        we = 0; re = 0;
         clk = 0; rst = 1;
         #10;
         rst = 0;
 
         // --- Pruebas de lectura ---
-        task_read(32'd0, 4'b0011);
-        task_read(32'd4, 4'b0111);
-        task_read(32'd2, 4'b1111);
+        $display("-------------------[Pruebas de lectura]-------------------");
+        // 1. Lectura de un dato con miss
+        $display("\n Lectura de un dato con miss");
+        task_read(32'd4, 4'b1111);
+        // 2. Lectura de un dato sin miss
+        $display("\n Lectura de un dato sin miss");
+        task_read(32'd0, 4'b1111);
+        // 3. Lectura desfasada con un miss
+        $display("\n Lectura desfasada con miss");
         task_read(32'd6, 4'b1111);
-        task_read(32'd12, 4'b1111);
+        // 4. Lectura parcial con miss
+        $display("\n Lectura parcial con miss");
+        task_read(32'd15, 4'b0011);
+        // 5. Lectura parcial sin miss
+        $display("\n Lectura de un dato sin miss");
+        task_read(32'd18, 4'b0111);
+        // 6. Lectura con miss forzado para reemplazo de linea
+        $display("\n Lectura con miss forzado para reemplazo de linea");
+        task_read(32'd32, 4'b1111);
+
+        // --- Pruebas de escritura ---
+        $display("-------------------[Pruebas de escritura]-------------------");
+        // 1. Escritura propagada en todos los niveles (en una direccion que no este en cache)
+        $display("\n Escritura propagada a una direccion que no ha sido mapeada");
+        task_write(32'd28, 4'b0111, 32'hFFEEBBAA, 20);
+        // 2. Escritura propagada en todos los nivles (pero esta en cache)
+        $display("\n Escritura propagada a un direccion mapeada");
+        task_write(32'd4, 4'b1111, 32'hCACA0000, 20);
+        // 3. Escritura adelantada desde el buffer de memoria
+        $display("\n Escritura adelantada desde el buffer de memoria");
+        task_write(32'd24, 4'b0011, 32'hFFFFFFFF, 1);
+        task_read(32'd24, 4'b1111); // aqui el dato aun no se ha esrito (estaria en el buffer)
+        task_read(32'd28, 4'b1111); // aqui ya el dato estaria escrito entonces se completa la linea en L1 y L2
+
         // --- Volcado de memoria ---
         $display("\n[SISTEMA] Generando archivos de salida...");
         $writememh("./output/cache_l1_data_exit.hex", _mem._l1_dut.data);
@@ -60,24 +89,51 @@ module packed_mem_tb ();
 
     // --- Tareas para interactuar con la memoria ---
     task task_read(input [31:0] address, input [3:0] mask);
-        bit found; 
+        bit found;
+        int i;
         begin
             $display("+ TASK_READ: A[0x%0d], BM[%b]", address, mask);
-            found = 0;
             re = 1'b1;
             addr = address;
             bm = mask;
-            for (int i = 0; i < LAT1+LAT2+LAT3+5 && !found; i++) begin
+            found = 0; i = 0;
+            while (!found) begin
                 #10;
-                if (ready) begin 
-                    $display("[%0d] Data found! RD[%h]", i+1, rd); 
-                    found = 1;
-                end
+                if (ready) $display("[%0d] Data found! RD[%h]", i+1, rd); 
                 else $display("[%0d] Looking for data...", i+1);
+                found = ready;
+                i = i + 1;
             end
             addr = '0;
             bm = 4'b0000;
             re = 1'b0;
         end
+    endtask
+
+    task task_write(input [31:0] address, input [3:0] mask, input [31:0] data, input int cycles);
+        int i;
+        bit stall;
+        begin
+            $display("+ TASK_WRITE: A[0x%0d], BM[%b], WD[%h]", address, mask, data);
+            #5;
+            we = 1'b1;
+            addr = address;
+            bm = mask;
+            wd = data;
+            i = 0; stall = 0;
+            while (i < cycles | stall) begin
+                #10;
+                $display("[%0d] Data is being written...", i+1);
+                if (halt) we = 1'b1;
+                else we = 1'b0;
+                stall = halt;
+                i = i + 1;
+            end
+            we = 1'b0;
+            addr = '0;
+            bm = 4'b0000;
+            wd = '0;
+            #5;
+        end 
     endtask
 endmodule
