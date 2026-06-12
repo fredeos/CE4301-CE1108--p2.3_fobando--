@@ -46,13 +46,15 @@ L1:
 L2:
   t11 = 4
   t12 = 5
+  t14 = a + c
   p = t11
   q = t12
+  j = t14
   t13 = p + q
   r = t13
   param r
-  t14 = call f1, 1
-  tercero = t14
+  t15 = call f1, 1
+  tercero = t15
   return tercero
 L3:
   return

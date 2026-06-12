@@ -33,6 +33,7 @@ func int main(){
         int p = 4;
         int q = 5;
         int r = p + q;
+        int j = a + c;
 
         int tercero = f1(r);
 

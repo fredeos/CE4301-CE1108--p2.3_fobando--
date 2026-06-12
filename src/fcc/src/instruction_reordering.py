@@ -17,6 +17,7 @@ class SafeInstructionReorderer:
        - No mueve instrucciones de control ni instrucciones con efectos secundarios
        - Cuenta la cantidad de instrucciones reordenadas
        """
+
     def __init__(self):
         self.block_builder = BasicBlockBuilder()
         self.reordered_instructions_count = 0
@@ -174,9 +175,16 @@ class SafeInstructionReorderer:
         scheduled_indices: list[int] = []
 
         while ready:
-            # Escogemos una instrucción lista.
-            # La prioridad intenta mover constantes y cálculos independientes antes.
-            ready.sort(key=lambda index: self.priority_key(segment[index], index))
+            last_index = scheduled_indices[-1] if scheduled_indices else None
+
+            ready.sort(
+                key=lambda index: self.scheduling_key(
+                    segment,
+                    index,
+                    last_index,
+                    successors
+                )
+            )
 
             current = ready.pop(0)
             scheduled_indices.append(current)
@@ -200,52 +208,43 @@ class SafeInstructionReorderer:
 
         return reordered_segment
 
-    def priority_key(self, instr: IRInstruction, original_index: int) -> tuple[int, int]:
+    def scheduling_key(self, segment: list[IRInstruction], index: int, last_index: int | None,
+                       successors: dict[int, set[int]]) -> tuple[int, int, int, int]:
         """
-        Define qué instrucción independiente se escoge primero.
+        Decide cuál instrucción lista conviene escoger.
 
-        Menor prioridad numérica significa que se intenta mover antes.
+        Prioridades:
+        1. Evitar poner justo después una instrucción que depende de la anterior.
+        2. Mantener la prioridad normal por tipo de operación.
+        3. Preferir instrucciones que desbloquean más instrucciones futuras.
+        4. Mantener orden original como desempate.
         """
 
-        return (
-            self.op_priority.get(instr.op, 99),
-            original_index,
-        )
+        depends_on_previous = 0
 
-    def count_moved_instructions(
-        self,
-        original: list[IRInstruction],
-        reordered: list[IRInstruction]
-    ) -> int:
+        if last_index is not None and index in successors[last_index]:
+            depends_on_previous = 1
+
+        op_priority = self.op_priority.get(segment[index].op, 99)
+
+        unlocks = len(successors[index])
+
+        return depends_on_previous, op_priority, -unlocks, index
+
+    def count_moved_instructions(self, original: list[IRInstruction], reordered: list[IRInstruction]) -> int:
         """
         Cuenta cuántas instrucciones cambiaron de posición dentro del segmento.
         """
 
         moved = 0
-
         for index, instr in enumerate(original):
             if reordered[index] is not instr:
                 moved += 1
-
         return moved
 
     def is_reorderable_instruction(self, instr: IRInstruction) -> bool:
         """
         Solo se reordenan instrucciones puras y con destino.
-
-        Ejemplos reordenables:
-        - const
-        - assign
-        - binop
-        - unop
-
-        Ejemplos NO reordenables:
-        - label
-        - if_false
-        - goto
-        - return
-        - param
-        - call
         """
 
         if instr.op in self.fixed_ops:
@@ -279,4 +278,3 @@ class SafeInstructionReorderer:
         waw = bool(def_first & def_second)
 
         return raw or war or waw
-

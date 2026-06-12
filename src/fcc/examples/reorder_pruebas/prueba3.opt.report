@@ -6,4 +6,4 @@ Reporte de optimizacion IR:
   Eliminación de código muerto: no
   Instrucciones eliminadas por DCE: 0
   Reordenamiento seguro: sí
-  Instrucciones reordenadas: 12
+  Instrucciones reordenadas: 17
