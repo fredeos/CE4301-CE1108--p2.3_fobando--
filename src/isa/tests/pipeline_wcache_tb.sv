@@ -3,8 +3,8 @@
 module pipeline_wcache_tb ();
     logic clk, rst;
 
-    int cycles = 40;
-    int factor = 10;
+    int cycles = 1000;
+    int factor = 500;
     logic [31:0] cycle;
     logic [31:0] pmu_val;
 
