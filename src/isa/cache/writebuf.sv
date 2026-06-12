@@ -195,6 +195,9 @@ module writebuf #(
         end
     endgenerate
 
+    wire [3:0] hits_dude = lk_hits[0];
+    wire [31:0] adder_dude = address[0];
+
     // + Select each updated byte according for outputing
     logic [3:0] lk_thits [0:size-1];
     always_comb begin

@@ -244,10 +244,13 @@ module packed_mem #(
     // NOTE #2: Writing on memory is controlled by the write buffers which handle propagating data
     // to higher memory levels
     logic [1:0] wd_state, wd_next_state;
+    logic [1:0] wd_prev_state;
+
     always_ff @(posedge CLK, posedge RST) begin 
         if (RST) begin
             wd_state <= 2'b00;
         end begin 
+            wd_prev_state <= wd_state;
             wd_state <= wd_next_state;
         end
     end
@@ -256,8 +259,8 @@ module packed_mem #(
     always_comb begin
         case (wd_state)
             2'b00: begin
-                halt = 1'b0;
-                wd_next_state = (WE) ? 2'b01 : 2'b00;
+                halt = (wd_prev_state == 2'b10) ? 1'b0 : WE;
+                wd_next_state = (WE && wd_prev_state  == 2'b00) ? 2'b01 : 2'b00;
             end
             
             2'b01: begin

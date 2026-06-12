@@ -94,6 +94,7 @@ module pipeline_wcache ( // Pipeline de 5 etapas para arquitectura RISC: F32IS
     logic [1:0] cache_read_miss;
     logic [1:0] cache_write_miss;
     logic       cache_search_ready;
+    logic       cache_write_halt;
     
 
     // ########################################################################################################
@@ -353,9 +354,15 @@ module pipeline_wcache ( // Pipeline de 5 etapas para arquitectura RISC: F32IS
     assign MEM_MemRead = (MEM_INSTR[5:1] == 5'b00100);
 
     packed_mem  #(
-        .MEM_SIZE(MEM_SIZE_KB * 1024),
+        .L1_LATENCY(1),
+        .L2_LATENCY(2),
+        .MEM_LATENCY(4),
         .L1_SIZE(32),
-        .L2_SIZE(64)
+        .L2_SIZE(64),
+        .MEM_SIZE(64 * 1024),
+        .L1_ASO(2),
+        .L2_ASO(4),
+        .WPL(2)
     ) _packed_mem (
         .CLK(clk), 
         .RST(rst),
@@ -369,10 +376,9 @@ module pipeline_wcache ( // Pipeline de 5 etapas para arquitectura RISC: F32IS
         // Conexión a señales internas
         .ready(cache_search_ready),
         .read_miss(cache_read_miss),
-        .write_miss(cache_write_miss)
+        .write_miss(cache_write_miss),
+        .halt(cache_write_halt)
     );
-
-
 
     // --- 5. Writeback (WB) ---
     // + Flip-Flop para pipe WB
@@ -417,6 +423,7 @@ module pipeline_wcache ( // Pipeline de 5 etapas para arquitectura RISC: F32IS
         .branch_taken(MEM_PCSrc[0] | MEM_PCSrc[1] | WB_PCSrc),
         .mem_busy(1'b0),
         .cache_search_ready(cache_search_ready),
+        .cache_write_halt(cache_write_halt),
         .wb_busy(1'b0),
         .StallIF(IF_EN), .FlushIF(IF_CLR),
         .StallID(ID_EN), .FlushID(ID_CLR),

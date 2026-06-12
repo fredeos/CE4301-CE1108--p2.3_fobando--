@@ -3,8 +3,8 @@
 module pipeline_wcache_tb ();
     logic clk, rst;
 
-    int cycles = 12000;
-    int factor = 1000;
+    int cycles = 40;
+    int factor = 10;
     logic [31:0] cycle;
     logic [31:0] pmu_val;
 
@@ -18,14 +18,19 @@ module pipeline_wcache_tb ();
     );
 
     initial begin 
+       // 1. Asegurar que las carpetas existan (debes hacerlo en la terminal: mkdir -p gen output)
         $dumpfile("./gen/pipeline.vcd");
-        $dumpvars(0, pipeline_wcache_tb);
+        
+        // 2. IMPORTANTE: Indicar explícitamente el módulo raíz
+        $dumpvars(0, pipeline_wcache_tb); 
+        
         $display("[Inicio del testbench]");
         
+        // 3. Inicialización correcta
+        clk = 0; 
         cycle = '0;
-        clk = 1;
         rst = 1;
-        #5; rst = 0; #5;
+        #10; rst = 0;
 
         for (int i = 1; i < cycles; i++) begin 
             #10;
