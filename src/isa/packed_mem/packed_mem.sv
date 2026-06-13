@@ -15,7 +15,10 @@ module packed_mem #(
     parameter int MEM_SIZE = 256,  // Data memory size (in bytes)                 [default: 256 bytes]
     parameter int L1_ASO   = 2,    // L1 associatiavity (number of ways)          [default: 2(min)]
     parameter int L2_ASO   = 4,    // l2 associatiavity (number of ways)          [default: 4]
-    parameter int WPL = 2          // Memory-wide words-per-line                  [default: 2(min)]
+    parameter int WPL = 2,         // Memory-wide words-per-line                  [default: 2(min)]
+    parameter int BUF1_SIZE = 4,   // Write buffer 1 size (number of words)       [default: 4]
+    parameter int BUF2_SIZE = 8,   // Write buffer 2 size (number of words)       [default: 4]
+    parameter int BUF3_SIZE = 8    // Write buffer 3 size (number of words)       [default: 4]
 )(
     // + Global signals
     input  logic CLK,
@@ -28,7 +31,7 @@ module packed_mem #(
     input  logic [31:0] WD, // write data
     output logic [31:0] RD, // read data
     // + Output control signals
-    output logic ready,            // read ready signal
+    output logic [1:0] ready,      // read ready signal
     output logic halt,             // write halt signal
     output logic [1:0] read_miss,  // [0]: L1, [1]: L2
     output logic [1:0] write_miss  // [0]: L1, [1]: L2
@@ -52,6 +55,9 @@ module packed_mem #(
 
     wire L2_read_miss  = ~L2_hits[0] & L2_rdy[0]; // true miss
     wire L2_write_miss = ~L2_hits[1] & L2_rdy[1]; // true miss
+
+    wire M_read_hit  = M_rdy[0]; // true hit 
+    wire M_write_hit = M_rdy[1]; // true miss
 
     assign read_miss = {L2_read_miss, L1_read_miss};
     assign write_miss = {L2_write_miss, L1_write_miss};
@@ -129,40 +135,105 @@ module packed_mem #(
     // --- Memory reading FSM ---
     // NOTE #1: This finite state machine allows controlling the memory for initiating data reading
     // and filling missing lines (miss penalty)
-    logic [2:0] state;
+
+    // 1. FSM state update logic
+    logic [3:0] rd_state, rd_next_state;
     always_ff @(posedge CLK, posedge RST) begin 
         if (RST) begin
-            ready <= 1'b0;
+            rd_state <= 4'b0000;
+        end else begin
+            rd_state <= rd_next_state;
+        end
+    end
+
+    // 2. FSM combinational logic
+    assign ready[0] = (rd_state == 4'b1001);
+    always_comb begin
+        rd_next_state = rd_state;
+        ignore = 2'b00;
+        case (rd_state)
+            4'b0000: begin // IDLE
+                if (RE) rd_next_state = 4'b0001; // go to L1
+            end
+
+            4'b0001: begin // REQUEST L1
+                if (L1_read_hit) rd_next_state = 4'b0010; // retrieve results from L1
+                if (L1_read_miss)rd_next_state = 4'b0011; // go to L2
+            end
+
+            4'b0010: begin // ASSERT L1
+                rd_next_state = 4'b1001; // DONE
+            end
+
+            4'b0011: begin // REQUEST L2
+                if (L2_read_hit) rd_next_state = 4'b0100; // retrieve results from L2
+                if (L2_read_miss)rd_next_state = 4'b0101; // go to MEM
+            end
+
+            4'b0100: begin // ASSERT L2
+                if (|L1_hits_L2) begin 
+                    ignore = 2'b01; // ignore missing lines on L1
+                    rd_next_state = 4'b1001;  // DONE
+                end
+                else rd_next_state = 4'b0111; // fill missing lines on L1
+            end
+
+            4'b0101: begin // REQUEST MEM
+                if (M_read_hit) rd_next_state = 4'b0110; // retrieve results from MEM
+            end
+
+            4'b0110: begin // ASSERT MEM
+                if (|L2_hits_M) begin
+                    ignore = 2'b11; // ignore missing lines on L1 and L2
+                    rd_next_state = 4'b1001;  // DONE
+                end
+                else rd_next_state = 4'b1000; // fill missing lines on L1 and L2
+            end
+
+            4'b0111: begin // FILL L1
+                rd_next_state = 4'b1001; // DONE
+            end
+
+            4'b1000: begin // FILL L2
+                rd_next_state = 4'b0111; // fill missing lines on L1
+            end
+
+            4'b1001: begin // DONE
+                rd_next_state = 4'b0000; // go back to idle
+            end
+        endcase
+    end
+
+    // + Set read enable bits
+    wire L1_RE = (rd_state == 4'b0001);
+    wire L2_RE = (rd_state == 4'b0011);
+    wire M_RE  = (rd_state == 4'b0101);
+
+    // + Set burst valid bits
+    wire L1_fml = (rd_state == 4'b0111); // fill missing lines for L1
+    wire L2_fml = (rd_state == 4'b1000); // fill missing lines for L2
+
+    // 3. FSM output logic
+    always_ff @(posedge CLK, posedge RST) begin
+        if (RST) begin
             RD <= '0;
-            ignore <= '0;
             burst_addr[0] <= '0;
             burst_addr[1] <= '0;
             for (int i = 0; i < WPL; i++) begin 
                 burst[0][i] <= '0;
                 burst[1][i] <= '0;
             end
-            state <= 3'b000;
         end else begin
-            case (state)
-                3'b000:  begin // WD_idle
-                    ready <= 1'b0;
-                    RD <= '0;
-                    if (RE) state <= 3'b001; // go-to L1
-                end
-
-                3'b001: begin // Search on L1
-                    ready <= L1_read_hit;
+            case (rd_state)
+                4'b0010: begin // ASSERT L1: save register results
                     //RD <= read_data[0];
                     RD[7:0]   <= (IN_hit1_L1) ? IN_rd_L1[0] : rd_bytes[0][0];
                     RD[15:8]  <= (IN_hit2_L1) ? IN_rd_L1[1] : rd_bytes[0][1];
                     RD[23:16] <= (IN_hit3_L1) ? IN_rd_L1[2] : rd_bytes[0][2];
                     RD[31:24] <= (IN_hit4_L1) ? IN_rd_L1[3] : rd_bytes[0][3];
-                    if (L1_read_miss) state <= 3'b010;     // go-to L2
-                    else if (L1_read_hit) state <= 3'b000; // go back to WD_idle
                 end
 
-                3'b010: begin // Search on L2
-                    ready <= 1'b0;
+                4'b0100: begin // ASSERT L2: save register results
                     //RD <= read_data[1];
                     RD[7:0]   <= (L1_hit1_L2) ? L1_rd_L2[0] : rd_bytes[1][0];
                     RD[15:8]  <= (L1_hit2_L2) ? L1_rd_L2[1] : rd_bytes[1][1];
@@ -174,17 +245,9 @@ module packed_mem #(
                         burst[0][i] <= L2_burst[0][i];
                         burst[1][i] <= L2_burst[1][i];
                     end
-                    if (L2_read_miss) state <= 3'b011;     // go-to M
-                    else if (L2_read_hit) begin 
-                        if (|L1_hits_L2) begin 
-                            ignore <= 2'b01;
-                            state <= 3'b110; // data was forwarded, but burst is outdated
-                        end else state <= 3'b100; // fill missing lines on L1
-                    end
                 end
 
-                3'b011: begin // Search on M
-                    ready <= 1'b0;
+                4'b0110: begin // ASSERT MEM: save register results
                     //RD <= read_data[2];
                     RD[7:0]   <= (L2_hit1_M) ? L2_rd_M[0] : rd_bytes[2][0];
                     RD[15:8]  <= (L2_hit2_M) ? L2_rd_M[1] : rd_bytes[2][1];
@@ -196,95 +259,60 @@ module packed_mem #(
                         burst[0][i] <= M_burst[0][i];
                         burst[1][i] <= M_burst[1][i];
                     end
-                    if (M_rdy[0]) begin
-                        if (|L2_hits_M) begin
-                            ignore <= 2'b11;
-                            state <= 3'b110; // data was forwarded, but burst is outdated
-                        end else state <= 3'b101; // fill missing lines on L2 and L1
-                    end
-                end
-
-                3'b100: begin // L1 miss penalty (fill missing lines)
-                    ready <= 1'b1;
-                    state <= 3'b001; // go back to L1
-                end
-
-                3'b101: begin // L2 miss penalty (fill missing lines)
-                    ready <= 1'b0;
-                    state <= 3'b100; // fill missig lines on L1
-                end
-
-                3'b110: begin // Forwarding fix transition state
-                    ignore <= 2'b00;
-                    ready <= 1'b1;
-                    state <= 3'b000; // go back to WD_idle
-                end
-
-                default: begin
-                    ready <= 1'b0;
-                    RD <= '0;
-                    state <= 3'b000;
                 end
             endcase
         end
     end
 
-    // 1. Set read enable bits
-    wire L1_RE = ((state == 3'b000) | (state == 3'b001)) & RE;
-    wire L2_RE = (state == 3'b010);
-    wire M_RE  = (state == 3'b011);
-
-    // 2. Set burst valid bits
-    wire L1_fml = (state == 3'b100); // fill missing lines for L1
-    wire L2_fml = (state == 3'b101); // fill missing lines for L2
-
     // --- Memory writing FSM ---
-    // + The objective of this FSM is to control the 'halt' signal to garantue that data is able to written
+    // + The objective of this FSM is to control the 'halt' signal to garantee that data is able to written
     // to the write buffers
     // NOTE #2: Writing on memory is controlled by the write buffers which handle propagating data
     // to higher memory levels
+
+    // 1. FSM state update logic
     logic [1:0] wd_state, wd_next_state;
     logic [1:0] wd_prev_state;
 
     always_ff @(posedge CLK, posedge RST) begin 
         if (RST) begin
             wd_state <= 2'b00;
-        end begin 
-            wd_prev_state <= wd_state;
+        end else begin 
             wd_state <= wd_next_state;
         end
     end
 
+    // 2. FSM combinational logic
     wire write_path_full = full[0] | full[1] | full[2];
+    assign halt = write_path_full & (wd_state == 2'b01);
+    assign ready[1] = (wd_state == 2'b11);
     always_comb begin
+        wd_next_state = wd_state;
         case (wd_state)
-            2'b00: begin
-                halt = (wd_prev_state == 2'b10) ? 1'b0 : WE;
-                wd_next_state = (WE && wd_prev_state  == 2'b00) ? 2'b01 : 2'b00;
+            2'b00: begin // IDLE
+                if (WE) wd_next_state = 2'b01; // check if buffers are ready
             end
             
-            2'b01: begin
-                halt = 1'b1;
-                wd_next_state = (write_path_full) ? 2'b01 : 2'b10;
+            2'b01: begin // WAIT
+                if (!write_path_full) wd_next_state = 2'b10; // ready to write
             end
 
-            2'b10: begin 
-                halt = 1'b0;
-                wd_next_state = 2'b00;
+            2'b10: begin // WRITE
+                wd_next_state = 2'b11; // done
             end
 
-            default: begin
-                halt = 1'b0;
-                wd_next_state = 2'b00;
+            2'b11: begin // DONE
+                wd_next_state = 2'b00; // go back to idle
             end
         endcase
     end
 
+    // 3. Queue data on first buffer
     assign queue[0] = (wd_state == 2'b10);
 
     // --- L1 Cache ---
     // + Write buffer IN-L1
-    writebuf #(.size(4)) _in_writebuf (
+    writebuf #(.size(BUF1_SIZE)) _in_writebuf (
         // + Sequential logic signals
         .CLK(CLK), .RST(RST),
         // + Control signals
@@ -322,7 +350,7 @@ module packed_mem #(
     );
 
     // + Write buffer L1-L2
-    writebuf #(.size(6)) _l1_writebuf (
+    writebuf #(.size(BUF2_SIZE)) _l1_writebuf (
         // + Sequential logic signals
         .CLK(CLK), .RST(RST),
         // + Control signals
@@ -361,7 +389,7 @@ module packed_mem #(
     );
 
     // + Write buffer L2-M
-    writebuf #(.size(6)) _l2_writebuf (
+    writebuf #(.size(BUF3_SIZE)) _l2_writebuf (
         // + Sequential logic signals
         .CLK(CLK), .RST(RST),
         // + Control signals
