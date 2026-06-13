@@ -132,8 +132,8 @@ module pmu #(
     input  logic event_cache_l1_miss_write,  // Miss de escritura activo en L1
     input  logic event_cache_l2_miss_read,   // Miss de lectura  activo en L2
     input  logic event_cache_l2_miss_write,  // Miss de escritura activo en L2
-    input  logic event_cache_l1_access;      // Acceso a L1
-    input  logic event_cache_l2_access;      // Acceso a L2
+    input  logic event_cache_l1_access,      // Acceso a L1
+    input  logic event_cache_l2_access,      // Acceso a L2
 
     // Señal de finalización de búsqueda en caché. No se utiliza actualmente
     // para el conteo (la detección de flanco lo hace innecesario), pero se
