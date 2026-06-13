@@ -96,6 +96,8 @@ module pipeline_wcache ( // Pipeline de 5 etapas para arquitectura RISC: F32IS
     logic       cache_search_ready;
     logic       cache_write_ready;
     logic       cache_write_halt;
+    logic       cache_l1_access;
+    logic       cache_l2_access;
     
 
     // ########################################################################################################
@@ -457,7 +459,9 @@ module pipeline_wcache ( // Pipeline de 5 etapas para arquitectura RISC: F32IS
         .event_cache_l1_miss_write(cache_write_miss[0]),
         .event_cache_l2_miss_read (cache_read_miss[1]),
         .event_cache_l2_miss_write(cache_write_miss[1]),
-        .cache_search_ready       (cache_search_ready),
+        .event_cache_l1_access(cache_l1_access),
+        .event_cache_l1_access(cache_l2_access),
+        .cache_search_ready(cache_search_ready),
         
         // Interfaz de lectura para registros
         .read_addr(CPU_PMU_ReadAddr),
