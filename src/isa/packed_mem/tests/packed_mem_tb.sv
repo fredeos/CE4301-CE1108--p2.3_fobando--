@@ -12,7 +12,8 @@ module packed_mem_tb ();
         .L1_LATENCY(LAT1), .L2_LATENCY(LAT2), .MEM_LATENCY(LAT3),
         .L1_SIZE(32), .L2_SIZE(64), .MEM_SIZE(256),
         .L1_ASO(2), .L2_ASO(4),
-        .WPL(2)
+        .WPL(2),
+        .BUF1_SIZE(4), .BUF2_SIZE(4), .BUF3_SIZE(2)
     ) _mem (
         .CLK(clk), .RST(rst),
         .RE(re), .WE(we),
@@ -71,10 +72,17 @@ module packed_mem_tb ();
         task_write(32'd4, 4'b1111, 32'hCACA0000, 20);
         // 3. Escritura adelantada desde el buffer de memoria
         $display("\tEscritura adelantada desde el buffer de memoria");
-        task_write(32'd24, 4'b0011, 32'hFFFFFFFF, 20);
+        task_write(32'd24, 4'b0011, 32'hFFFFFFFF, 1);
         task_read(32'd24, 4'b1111); // aqui el dato aun no se ha esrito (estaria en el buffer)
         task_read(32'd28, 4'b1111); // aqui ya el dato estaria escrito entonces se completa la linea en L1 y L2
-        task_read(32'd0, 4'b1111);
+        // 4. Sobrecarga de escrituras a memoria principal para llenar el buffer
+        $display("\tSobrecarga de escrituras a memoria principal para llenar un buffer");
+        task_write(32'd40, 4'b1111, 32'd1, 1);
+        task_write(32'd44, 4'b1111, 32'd2, 1);
+        task_write(32'd48, 4'b1111, 32'd3, 1);
+        task_write(32'd52, 4'b1111, 32'd4, 1);
+        task_write(32'd56, 4'b1111, 32'd5, 1);
+        task_wait(50);
 
         // --- Volcado de memoria ---
         $display("\n[SISTEMA] Generando archivos de salida...");
@@ -143,5 +151,13 @@ module packed_mem_tb ();
             bm = 4'b0000;
             wd = '0;
         end 
+    endtask
+
+    task task_wait(input int cycles);
+    begin 
+        for (int i = 0; i < cycles; i++) begin 
+            #10;
+        end
+    end
     endtask
 endmodule

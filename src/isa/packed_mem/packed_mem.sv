@@ -15,7 +15,10 @@ module packed_mem #(
     parameter int MEM_SIZE = 256,  // Data memory size (in bytes)                 [default: 256 bytes]
     parameter int L1_ASO   = 2,    // L1 associatiavity (number of ways)          [default: 2(min)]
     parameter int L2_ASO   = 4,    // l2 associatiavity (number of ways)          [default: 4]
-    parameter int WPL = 2          // Memory-wide words-per-line                  [default: 2(min)]
+    parameter int WPL = 2,         // Memory-wide words-per-line                  [default: 2(min)]
+    parameter int BUF1_SIZE = 4,   // Write buffer 1 size (number of words)       [default: 4]
+    parameter int BUF2_SIZE = 8,   // Write buffer 2 size (number of words)       [default: 4]
+    parameter int BUF3_SIZE = 8    // Write buffer 3 size (number of words)       [default: 4]
 )(
     // + Global signals
     input  logic CLK,
@@ -307,7 +310,7 @@ module packed_mem #(
 
     // --- L1 Cache ---
     // + Write buffer IN-L1
-    writebuf #(.size(4)) _in_writebuf (
+    writebuf #(.size(BUF1_SIZE)) _in_writebuf (
         // + Sequential logic signals
         .CLK(CLK), .RST(RST),
         // + Control signals
@@ -345,7 +348,7 @@ module packed_mem #(
     );
 
     // + Write buffer L1-L2
-    writebuf #(.size(6)) _l1_writebuf (
+    writebuf #(.size(BUF2_SIZE)) _l1_writebuf (
         // + Sequential logic signals
         .CLK(CLK), .RST(RST),
         // + Control signals
@@ -384,7 +387,7 @@ module packed_mem #(
     );
 
     // + Write buffer L2-M
-    writebuf #(.size(6)) _l2_writebuf (
+    writebuf #(.size(BUF3_SIZE)) _l2_writebuf (
         // + Sequential logic signals
         .CLK(CLK), .RST(RST),
         // + Control signals

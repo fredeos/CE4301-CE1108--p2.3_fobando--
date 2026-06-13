@@ -380,14 +380,18 @@ module writebuf #(
     assign hits = lk_thits[size-1];
 
     // --- Writing logic (synchronous) ---
-    logic [31:0] idx, next_idx;
-    wire queue_possible = queue & (idx < size);
+    logic [31:0] idx, next_idx, in_idx;
     wire dequeue_possible = dequeue & (idx > 0);
+    wire queue_possible = queue & ((idx < size) | dequeue_possible);
     always_comb begin
         next_idx = idx;
+        in_idx = idx;
         if (queue_possible) next_idx = idx + 1;
         if (dequeue_possible) next_idx = idx - 1;
-        if (queue_possible && dequeue_possible) next_idx = idx;
+        if (queue_possible && dequeue_possible) begin 
+            next_idx = idx;
+            in_idx = idx - 1;
+        end
     end
 
     always_ff @(negedge CLK, posedge RST) begin
@@ -414,9 +418,9 @@ module writebuf #(
                 end
             end
             if (queue_possible) begin
-                address[idx] <= addr_in;
-                data[idx] <= data_in;
-                enables[idx] <= {1'b1, bm_in};
+                address[in_idx] <= addr_in;
+                data[in_idx] <= data_in;
+                enables[in_idx] <= {1'b1, bm_in};
             end
         end
     end

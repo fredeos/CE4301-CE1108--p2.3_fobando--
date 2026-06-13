@@ -1,15 +1,15 @@
 [*]
 [*] GTKWave Analyzer v3.3.100 (w)1999-2019 BSI
-[*] Fri Jun 12 22:26:23 2026
+[*] Sat Jun 13 03:25:51 2026
 [*]
 [dumpfile] "B:\workbench\repos\CE4301-CE1108--p2.3_fobando--\gen\packed_mem.vcd"
-[dumpfile_mtime] "Fri Jun 12 22:26:10 2026"
-[dumpfile_size] 24499
+[dumpfile_mtime] "Sat Jun 13 03:24:48 2026"
+[dumpfile_size] 67634
 [savefile] "B:\workbench\repos\CE4301-CE1108--p2.3_fobando--\config\packed_mem.gtkw"
-[timestart] 10
+[timestart] 0
 [size] 1000 600
 [pos] -1 -1
-*-2.974262 15 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
+*-6.974262 15 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
 [treeopen] packed_mem_tb.
 [treeopen] packed_mem_tb._mem.
 [sst_width] 197
