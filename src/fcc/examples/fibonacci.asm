@@ -6,6 +6,8 @@ __init__:    # addr=0
     call 88    # entrada principal | -> main @ 364
     la r0, 0    # celda de resultado del programa
     stw p0, +0(r0)    # guardar resultado final
+    end
+
 __halt__:    # addr=20
     jmp -1    # -> __halt__ @ 20
 fibonacci_aux:    # addr=24
@@ -115,4 +117,4 @@ main:    # addr=364
     ldw ra, +0(sp)
     addi sp, sp, -4
     ret
-    end
+

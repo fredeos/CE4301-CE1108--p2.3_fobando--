@@ -17,6 +17,7 @@ module hazard_unit #(
     input  logic wb_busy,
 
     input  logic cache_search_ready,
+    input  logic cache_write_ready,
     input  logic cache_write_halt,
 
     output logic StallIF,
@@ -713,7 +714,7 @@ module hazard_unit #(
         endcase
 
         
-        if (mem_is_store_op && cache_write_halt) begin
+        if (mem_is_store_op && (!cache_write_ready || cache_write_halt)) begin
             StallIF  = 1'b1;
             StallID  = 1'b1;
             StallEX  = 1'b1;
