@@ -34,7 +34,7 @@ module writebuf #(
     // --- Buffer instantiaton ---
     logic [31:0]    data [0:size-1];
     logic [31:0] address [0:size-1];
-    logic [4:0]  enables [0:size-1]; // [valid][ASM]
+    logic [4:0]  enables [0:size-1]; // [valid][BM]
 
     // --- Buffer initialization ---
     initial begin
@@ -63,6 +63,17 @@ module writebuf #(
         return bits;
     endfunction
 
+    function automatic logic [63:0] pack_bytes(
+        input logic [1:0] byte_offset,
+        input logic [31:0] dta
+    ); 
+        logic [63:0] b = 64'b0;
+
+        b[byte_offset*8 +: 32] = dta;
+
+        return b;
+    endfunction
+
     // 2. Selection of found bits
     function automatic logic [3:0] get_selection( // auxiliary decoder for retrieving selected bits
         input logic [1:0] byte_offset, // byte offset
@@ -81,6 +92,132 @@ module writebuf #(
         return selection;
     endfunction
 
+    typedef struct packed {
+        logic [7:0] overlap1;
+        logic [7:0] overlap2;
+        logic [1:0] ovtype;
+        logic valid;
+        logic [1:0] start1;
+        logic [2:0] start2;
+    } overlap_map_t;
+
+    function automatic overlap_map_t map_overlap ( // auxiliary decoder for byte overlap mapping
+        input logic valid,
+        input logic [1:0][29:0] idx1,
+        input logic [7:0]  bitmap1,
+        input logic [1:0]  offset1,
+        input logic [1:0][29:0] idx2,
+        input logic [7:0]  bitmap2,
+        input logic [1:0]  offset2
+    ); 
+        overlap_map_t m;
+
+        logic [2:0] pos1 = {1'b0, offset1};
+        logic [2:0] pos2 = {1'b0, offset2};
+        if ((idx1[0] == idx2[0]) && valid) begin    // overlap type 1: word[0] from 1st matches word[0] from 2nd
+            m.overlap1 = bitmap1 & bitmap2;
+            m.overlap2 = bitmap1 & bitmap2;
+            m.ovtype = 2'b01;
+            m.valid = 1'b1;
+            if (offset1 <= offset2) begin 
+                m.start1 = offset2 - offset1;
+                m.start2 = pos2;
+            end else begin
+                m.start1 = 2'b00;
+                m.start2 = pos1;
+            end
+        end
+        else if ((idx1[1] == idx2[0]) && valid) begin // overlap type 2: word[1] from 1st matches word[0] from 2nd
+            m.overlap1 = {bitmap1[7:4] & bitmap2[3:0], 4'b0000};
+            m.overlap2 = {4'b0000, bitmap1[7:4] & bitmap2[3:0]};
+            m.ovtype = 2'b10;
+            if (offset1 <= offset2) begin 
+                m.valid = 1'b0;
+                m.start1 = '0;
+                m.start2 = '0;
+            end else begin 
+                m.valid = 1'b1;
+                m.start1 = offset2 - offset1;
+                m.start2 = pos2;
+            end
+        end
+        else if ((idx1[0] == idx2[1]) && valid) begin // overlap type 3: word[0] from 1st matches word[1] from 2nd
+            m.overlap1 = {4'b0000, bitmap1[3:0] & bitmap2[7:4]};
+            m.overlap2 = {bitmap1[3:0] & bitmap2[7:4], 4'b0000};
+            m.ovtype = 2'b11;
+            if (offset2 > offset1) begin 
+                m.valid = 1'b1;
+                m.start1 = 2'b00;
+                m.start2 = 4 + pos1;
+            end else begin 
+                m.valid = 1'b0;
+                m.start1 = '0;
+                m.start2 = '0;
+            end
+        end
+        else begin // overlap type 0: no matching bytes
+            m.overlap1 = '0;
+            m.overlap2 = '0;
+            m.ovtype = 2'b00;
+            m.valid = 1'b0;
+            m.start1 = '0;
+            m.start2 = '0;
+        end
+
+        return m;
+    endfunction
+
+    function automatic logic [31:0] set_bytes (
+        logic [31:0] base,
+        logic [63:0] pack,
+        logic [1:0]  map_type,
+        logic valid_map,
+        logic [7:0]  map,
+        logic [1:0]  idx,
+        logic [2:0]  pos
+    );
+        logic [31:0] prod = base;
+        
+        logic [1:0] idx1 = idx;
+        logic [1:0] idx2 = idx + 1;
+        logic [1:0] idx3 = idx + 2;
+        logic [1:0] idx4 = idx + 3;
+
+        logic [2:0] pos1 = pos;
+        logic [2:0] pos2 = pos + 1;
+        logic [2:0] pos3 = pos + 2;
+        logic [2:0] pos4 = pos + 3;
+
+        case (map_type) 
+            2'b01: begin 
+                if (valid_map) begin 
+                    if (map[pos1]) prod[(idx1*8) +: 8] = pack[(pos1*8) +: 8];
+                    if (map[pos2] && (idx < 3)) prod[(idx2*8) +: 8] = pack[(pos2*8) +: 8];
+                    if (map[pos3] && (idx < 2)) prod[(idx3*8) +: 8] = pack[(pos3*8) +: 8];
+                    if (map[pos4] && (idx < 1)) prod[(idx4*8) +: 8] = pack[(pos4*8) +: 8];
+                end
+            end
+
+            2'b10: begin 
+                if (valid_map) begin 
+                    if (map[pos1]) prod[(idx1*8) +: 8] = pack[(pos1*8) +: 8];
+                    if (map[pos2] && (idx < 3)) prod[(idx2*8) +: 8] = pack[(pos2*8) +: 8];
+                    if (map[pos3] && (idx < 2)) prod[(idx3*8) +: 8] = pack[(pos3*8) +: 8];
+                end
+            end
+
+            2'b11: begin 
+                if (valid_map) begin 
+                    if (map[pos1]) prod[(idx1*8) +: 8] = pack[(pos1*8) +: 8];
+                    if (map[pos2] && (pos < 6)) prod[(idx2*8) +: 8] = pack[(pos2*8) +: 8];
+                    if (map[pos3] && (pos < 5)) prod[(idx3*8) +: 8] = pack[(pos3*8) +: 8];
+                end
+            end
+        endcase
+
+        return prod;
+    endfunction
+
 
     // --- Lookup logic (asynchronous) ---
     // NOTE: similarly to how its done in cache and memory it is required to obtain byte offset
@@ -91,16 +228,12 @@ module writebuf #(
     wire [1:0] lk_byte_offset = A[1:0];
 
     // 2. Obtain address
-    logic [29:0] lk_idx [0:1]; // [0]: nearest word, [1]: next word
+    logic [1:0][29:0] lk_idx; // [0]: nearest word, [1]: next word
     assign lk_idx[0] = A[31:2];
     assign lk_idx[1] = lk_idx[0] + 1;
 
-    // 3. Boundary crossing bits
+    // 3. Boundary bits
     wire [7:0] lk_boundbits = get_boundary_bits(lk_byte_offset, BM);
-
-    logic [1:0][3:0] lk_wordbits; // [0]: nearest word, [1]: next word
-    assign lk_wordbits[0] = lk_boundbits[3:0];
-    assign lk_wordbits[1] = lk_boundbits[7:0];
 
     // 4. Lookup across the buffer for both words
     // ISSUE #1: Memory reading can be outdated if written data is still on the buffer, but
@@ -113,271 +246,66 @@ module writebuf #(
     // the buffer, the content further to the back of the queue is the most updated data and
     // therefore has precedence
 
-    // + Extract data from buffer
-    logic [1:0]  bf_byte_offset [0:size-1];
-    logic [29:0] bf_idx [0:size-1][0:1]; // [0]: nearest word, [1]: next word
-    logic bf_valid [0:size-1];
-    logic [3:0] bf_bm [0:size-1];
-    logic [7:0] bf_boundbits [0:size-1];
-    logic [1:0][3:0] bf_wordbits [0:size-1]; // [0]: nearest word, [1]: next word
+    logic [31:0] lk_data [0:size-1];
+    logic [3:0]  lk_hits [0:size-1];
     generate;
-        genvar i;
-        for (i = 0; i < size; i++) begin 
-            // + Get byte offset
-            assign bf_byte_offset[i] = address[i][1:0];
-            // + Get index's
-            assign bf_idx[i][0] = address[i][31:2];
-            assign bf_idx[i][1] = bf_idx[i][0] + 1;
-            // + Get valid and BM bits
-            assign bf_valid[i] = enables[i][4];
-            assign bf_bm[i] = enables[i][3:0];
-            // + Get boundary bits
-            assign bf_boundbits[i] = get_boundary_bits(bf_byte_offset[i], bf_bm[i]);
-            assign bf_wordbits[i][0] = bf_boundbits[i][3:0];
-            assign bf_wordbits[i][1] = bf_boundbits[i][7:4]; 
+        for (genvar i = 0; i < size; i++) begin
+            // + Get byte offset from data on buffer
+            logic [1:0] bf_byte_offset;
+            assign bf_byte_offset = address[i][1:0];
+            // + Get index's for data on buffer
+            logic [1:0][29:0] bf_idx;
+            assign bf_idx[0] = address[i][31:2];
+            assign bf_idx[1] = bf_idx[0] + 1;
+            // + Get the byte-mode and valid bit on buffer
+            logic is_valid;
+            logic [3:0] bf_bm;
+            assign {is_valid, bf_bm} = enables[i];
+            // + Get the boundary bits
+            logic [7:0] bf_boundbits;
+            assign bf_boundbits = get_boundary_bits(bf_byte_offset, bf_bm);
+            // + Pack data bytes
+            logic [63:0] bf_data;
+            assign bf_data = pack_bytes(bf_byte_offset, data[i]);
+            // + Generate overlap map
+            overlap_map_t tmp_map;
+            assign tmp_map = map_overlap(
+                is_valid,
+                lk_idx, lk_boundbits, lk_byte_offset,
+                bf_idx, bf_boundbits, bf_byte_offset
+            );
+            // + Identify byte hits with lookup data
+            logic [3:0] bf_hits;
+            assign bf_hits = get_selection(lk_byte_offset, lk_boundbits, tmp_map.overlap1);
+            // + Use map to override bytes for look up data
+            if (i == 0) begin
+                assign lk_hits[i] = bf_hits;
+                assign lk_data[i] = set_bytes(
+                    32'b0,
+                    bf_data,
+                    tmp_map.ovtype,
+                    tmp_map.valid,
+                    tmp_map.overlap2,
+                    tmp_map.start1,
+                    tmp_map.start2
+                );
+            end else begin 
+                assign lk_hits[i] = lk_hits[i-1] | bf_hits;
+                assign lk_data[i] = set_bytes(
+                    lk_data[i-1],
+                    bf_data,
+                    tmp_map.ovtype,
+                    tmp_map.valid,
+                    tmp_map.overlap2,
+                    tmp_map.start1,
+                    tmp_map.start2
+                );
+            end
         end
     endgenerate
 
-    // + Identify which content from buffer provides updated data
-    logic [1:0][3:0] bit_overlap [0:size-1];
-    logic [7:0] bf_selbits   [0:size-1];
-    logic [7:0] lk_selbits   [0:size-1];
-    logic [1:0] word_overlap [0:size-1];
-    always_comb begin
-        for (int i = 0; i < size; i++) begin
-            bit_overlap[i][0] = 4'b0000;
-            bit_overlap[i][1] = 4'b0000;
-            word_overlap[i] = 2'b00;
-            bf_selbits[i] = '0;
-            lk_selbits[i] = '0;
-            if ((lk_idx[0] == bf_idx[i][0]) && bf_valid[i]) begin 
-                bit_overlap[i][0] = lk_wordbits[0] & bf_wordbits[i][0];
-                bit_overlap[i][1] = lk_wordbits[1] & bf_wordbits[i][1];
-                word_overlap[i] = 2'b01;
-                bf_selbits[i] = {bit_overlap[i][1], bit_overlap[i][0]};
-                lk_selbits[i] = {bit_overlap[i][1], bit_overlap[i][0]};
-            end
-            else if ((lk_idx[1] == bf_idx[i][0]) && bf_valid[i]) begin
-                bit_overlap[i][0] = 4'b0000;
-                bit_overlap[i][1] = lk_wordbits[1] & bf_wordbits[i][0];
-                word_overlap[i] = 2'b10;
-                bf_selbits[i] = {bit_overlap[i][0], bit_overlap[i][1]};
-                lk_selbits[i] = {bit_overlap[i][1], bit_overlap[i][0]};
-            end
-            else if ((lk_idx[0] == bf_idx[i][1]) && bf_valid[i]) begin
-                bit_overlap[i][0] = lk_wordbits[0] & bf_wordbits[i][1];
-                bit_overlap[i][1] = 4'b0000;
-                word_overlap[i] = 2'b11;
-                bf_selbits[i] = {bit_overlap[i][0], bit_overlap[i][1]};
-                lk_selbits[i] = {bit_overlap[i][1], bit_overlap[i][0]};
-            end
-            
-        end
-    end
-
-    // + Obtain the selected bytes from the matching written data
-    logic [3:0] bf_sel  [0:size-1];
-    logic bf_sels       [0:size-1][0:3];
-    logic [3:0] lk_hits [0:size-1];
-    logic [3:0][7:0] bf_bytes [0:size-1];
-    generate 
-        for (i = 0; i < size; i++) begin
-            assign bf_sel[i] = get_selection(bf_byte_offset[i], bf_boundbits[i], bf_selbits[i]);
-            assign bf_sels[i][0] = bf_sel[i][0];
-            assign bf_sels[i][1] = bf_sel[i][1];
-            assign bf_sels[i][2] = bf_sel[i][2];
-            assign bf_sels[i][3] = bf_sel[i][3];
-            assign lk_hits[i] = get_selection(lk_byte_offset, lk_boundbits, lk_selbits[i]);
-            assign bf_bytes[i][0] = (bf_sels[i][0]) ? data[i][7:0]   : '0;
-            assign bf_bytes[i][1] = (bf_sels[i][1]) ? data[i][15:8]  : '0;
-            assign bf_bytes[i][2] = (bf_sels[i][2]) ? data[i][23:16] : '0;
-            assign bf_bytes[i][3] = (bf_sels[i][3]) ? data[i][31:24] : '0;
-        end
-    endgenerate
-
-    // + Select each updated byte according for outputing
-    logic [3:0] lk_thits [0:size-1];
-    always_comb begin
-        RD[0] = '0; RD[1] = '0; RD[2] = '0; RD[3] = '0; 
-        for (int i = 0; i < size; i++) begin
-            if (i == 0) lk_thits[i] = lk_hits[i];
-            else lk_thits[i] = lk_thits[i-1] | lk_hits[i];
-            case (bf_byte_offset[i]) 
-                2'b00: begin 
-                    case (lk_byte_offset)
-                        2'b00: begin 
-                            if (word_overlap[i] == 2'b01) begin
-                                if (bf_sels[i][0]) RD[0] = bf_bytes[i][0];
-                                if (bf_sels[i][1]) RD[1] = bf_bytes[i][1];
-                                if (bf_sels[i][2]) RD[2] = bf_bytes[i][2];
-                                if (bf_sels[i][3]) RD[3] = bf_bytes[i][3];
-                            end
-                        end
-                        2'b01: begin 
-                            if (word_overlap[i] == 2'b01) begin
-                                if (bf_sels[i][1]) RD[0] = bf_bytes[i][1];
-                                if (bf_sels[i][2]) RD[1] = bf_bytes[i][2];
-                                if (bf_sels[i][3]) RD[2] = bf_bytes[i][3];
-                            end
-                            if (word_overlap[i] == 2'b10) begin
-                                if (bf_sels[i][0]) RD[3] = bf_bytes[i][0];
-                            end
-                        end
-                        2'b10: begin 
-                            if (word_overlap[i] == 2'b01) begin
-                                if (bf_sels[i][2]) RD[0] = bf_bytes[i][2];
-                                if (bf_sels[i][3]) RD[1] = bf_bytes[i][3];
-                            end
-                            if (word_overlap[i] == 2'b10) begin
-                                if (bf_sels[i][0]) RD[2] = bf_bytes[i][0];
-                                if (bf_sels[i][1]) RD[3] = bf_bytes[i][1];
-                            end
-                        end
-                        2'b11: begin 
-                            if (word_overlap[i] == 2'b01) begin
-                                if (bf_sels[i][3]) RD[0] = bf_bytes[i][3];
-                            end
-                            if (word_overlap[i] == 2'b10) begin
-                                if (bf_sels[i][0]) RD[1] = bf_bytes[i][0];
-                                if (bf_sels[i][1]) RD[2] = bf_bytes[i][1];
-                                if (bf_sels[i][2]) RD[3] = bf_bytes[i][2];
-                            end
-                        end
-                    endcase
-                end
-
-                2'b01: begin 
-                    case (lk_byte_offset) 
-                        2'b00: begin 
-                            if (word_overlap[i] == 2'b01) begin
-                                if (bf_sels[i][0]) RD[1] = bf_bytes[i][0];
-                                if (bf_sels[i][1]) RD[2] = bf_bytes[i][1];
-                                if (bf_sels[i][2]) RD[3] = bf_bytes[i][2];
-                            end
-                            if (word_overlap[i] == 2'b11) begin
-                                if (bf_sels[i][3]) RD[0] = bf_bytes[i][3];
-                            end
-                        end
-                        2'b01: begin 
-                            if (word_overlap[i] == 2'b01) begin
-                                if (bf_sels[i][0]) RD[0] = bf_bytes[i][0];
-                                if (bf_sels[i][1]) RD[1] = bf_bytes[i][1];
-                                if (bf_sels[i][2]) RD[2] = bf_bytes[i][2];
-                                if (bf_sels[i][3]) RD[3] = bf_bytes[i][3];
-                            end
-                        end
-                        2'b10: begin 
-                            if (word_overlap[i] == 2'b01) begin
-                                if (bf_sels[i][1]) RD[0] = bf_bytes[i][1];
-                                if (bf_sels[i][2]) RD[1] = bf_bytes[i][2];
-                                if (bf_sels[i][3]) RD[2] = bf_bytes[i][3];
-                            end
-                            if (word_overlap[i] == 2'b10) begin
-                                if (bf_sels[i][0]) RD[3] = bf_bytes[i][0];
-                            end
-                        end
-                        2'b11: begin 
-                            if (word_overlap[i] == 2'b01) begin
-                                if (bf_sels[i][2]) RD[0] = bf_bytes[i][2];
-                                if (bf_sels[i][3]) RD[1] = bf_bytes[i][3];
-                            end
-                            if (word_overlap[i] == 2'b10) begin
-                                if (bf_sels[i][0]) RD[2] = bf_bytes[i][0];
-                                if (bf_sels[i][1]) RD[3] = bf_bytes[i][1];
-                            end
-                        end
-                    endcase
-                end
-
-                2'b10: begin 
-                    case (lk_byte_offset) 
-                        2'b00: begin 
-                            if (word_overlap[i] == 2'b01) begin
-                                if (bf_sels[i][0]) RD[2] = bf_bytes[i][0];
-                                if (bf_sels[i][1]) RD[3] = bf_bytes[i][1];
-                            end
-                            if (word_overlap[i] == 2'b11) begin
-                                if (bf_sels[i][2]) RD[0] = bf_bytes[i][2];
-                                if (bf_sels[i][3]) RD[1] = bf_bytes[i][3];
-                            end
-                        end
-                        2'b01: begin 
-                            if (word_overlap[i] == 2'b01) begin
-                                if (bf_sels[i][0]) RD[1] = bf_bytes[i][0];
-                                if (bf_sels[i][1]) RD[2] = bf_bytes[i][1];
-                                if (bf_sels[i][2]) RD[3] = bf_bytes[i][2];
-                            end
-                            if (word_overlap[i] == 2'b11) begin
-                                if (bf_sels[i][3]) RD[0] = bf_bytes[i][3];
-                            end
-                        end
-                        2'b10: begin 
-                            if (word_overlap[i] == 2'b01) begin
-                                if (bf_sels[i][0]) RD[0] = bf_bytes[i][0];
-                                if (bf_sels[i][1]) RD[1] = bf_bytes[i][1];
-                                if (bf_sels[i][2]) RD[2] = bf_bytes[i][2];
-                                if (bf_sels[i][3]) RD[3] = bf_bytes[i][3];
-                            end
-                        end
-                        2'b11: begin 
-                            if (word_overlap[i] == 2'b01) begin
-                                if (bf_sels[i][1]) RD[0] = bf_bytes[i][1];
-                                if (bf_sels[i][2]) RD[1] = bf_bytes[i][2];
-                                if (bf_sels[i][3]) RD[2] = bf_bytes[i][3];
-                            end
-                            if (word_overlap[i] == 2'b10) begin
-                                if (bf_sels[i][0]) RD[3] = bf_bytes[i][0];
-                            end
-                        end
-                    endcase
-                end
-
-                2'b11: begin 
-                    case (lk_byte_offset) 
-                        2'b00: begin 
-                            if (word_overlap[i] == 2'b01) begin
-                                if (bf_sels[i][0]) RD[3] = bf_bytes[i][0];
-                            end
-                            if (word_overlap[i] == 2'b11) begin
-                                if (bf_sels[i][1]) RD[0] = bf_bytes[i][1];
-                                if (bf_sels[i][2]) RD[1] = bf_bytes[i][2];
-                                if (bf_sels[i][3]) RD[2] = bf_bytes[i][3];
-                            end
-                        end
-                        2'b01: begin 
-                            if (word_overlap[i] == 2'b01) begin
-                                if (bf_sels[i][0]) RD[2] = bf_bytes[i][0];
-                                if (bf_sels[i][1]) RD[3] = bf_bytes[i][1];
-                            end
-                            if (word_overlap[i] == 2'b11) begin
-                                if (bf_sels[i][2]) RD[0] = bf_bytes[i][2];
-                                if (bf_sels[i][3]) RD[1] = bf_bytes[i][3];
-                            end
-                        end
-                        2'b10: begin 
-                            if (word_overlap[i] == 2'b01) begin
-                                if (bf_sels[i][0]) RD[1] = bf_bytes[i][0];
-                                if (bf_sels[i][1]) RD[2] = bf_bytes[i][1];
-                                if (bf_sels[i][2]) RD[3] = bf_bytes[i][2];
-                            end
-                            if (word_overlap[i] == 2'b11) begin
-                                if (bf_sels[i][3]) RD[0] = bf_bytes[i][3];
-                            end
-                        end
-                        2'b11: begin 
-                            if (word_overlap[i] == 2'b01) begin
-                                if (bf_sels[i][0]) RD[0] = bf_bytes[i][0];
-                                if (bf_sels[i][1]) RD[1] = bf_bytes[i][1];
-                                if (bf_sels[i][2]) RD[2] = bf_bytes[i][2];
-                                if (bf_sels[i][3]) RD[3] = bf_bytes[i][3];
-                            end
-                        end
-                    endcase
-                end
-            endcase
-        end
-    end
-    assign hits = lk_thits[size-1];
+    assign hits = lk_hits[size-1];
+    assign RD   = lk_data[size-1];
 
     // --- Writing logic (synchronous) ---
     logic [31:0] idx, next_idx, in_idx;
