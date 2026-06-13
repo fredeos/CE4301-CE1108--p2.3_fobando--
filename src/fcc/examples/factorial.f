@@ -1,4 +1,3 @@
-int global_result;
 func int factorial(int a){
     int resultado = 1;
     int i = 1;
@@ -7,7 +6,6 @@ func int factorial(int a){
         resultado = resultado * i;
         i += 1;
     }
-    global_result = resultado;
     ret resultado;
 }
 

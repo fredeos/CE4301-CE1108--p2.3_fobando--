@@ -7,6 +7,9 @@ module pipeline_wcache_tb ();
     int factor = 500;
     logic [31:0] cycle;
     logic [31:0] pmu_val;
+    // Declarar 'i' correctamente
+    int i = 0; 
+
 
     always #5 clk = ~clk;
     always_ff @(posedge clk) cycle <= cycle + 1;
@@ -18,36 +21,32 @@ module pipeline_wcache_tb ();
     );
 
     initial begin 
-       // 1. Asegurar que las carpetas existan (debes hacerlo en la terminal: mkdir -p gen output)
         $dumpfile("./gen/pipeline.vcd");
-        
-        // 2. IMPORTANTE: Indicar explícitamente el módulo raíz
         $dumpvars(0, pipeline_wcache_tb); 
         
-        $display("[Inicio del testbench]");
-        
-        // 3. Inicialización correcta
         clk = 0; 
-        cycle = '0;
+        cycle = 0;
         rst = 1;
-        #10; rst = 0;
+        #20; rst = 0; // Un poco más de tiempo para el reset
 
-        for (int i = 1; i < cycles; i++) begin 
-            #10;
+        // Esperar un par de ciclos antes de entrar al while
+        repeat(5) @(posedge clk);
 
-            // --- DEBUG PMU: ver comportamiento de write_miss durante STOREs ---
+
+        // El while ahora depende de una condición de tiempo y del valor
+        while (_cpu.WB_INSTR[31:0] != 32'h1E000080 && i < 5000) begin
+            @(posedge clk); // <--- IMPORTANTE: Esperar a que pase un ciclo de reloj
+            
             if (_cpu.MEM_INSTR[5:1] == 5'b00101) begin
-                $display("Ciclo %0d: STORE addr=0x%08h | WE=%b | write_miss[0]=%b | ready=%b | state=%b",
-                    i,
-                    _cpu.MEM_ALUOut,
-                    _cpu._packed_mem.WE,         // write enable que llega a packed_mem
-                    _cpu._packed_mem.write_miss[0], // L1 write miss
-                    _cpu._packed_mem.ready,
-                    _cpu._packed_mem.state       // estado de la FSM
-                );
+                $display("Ciclo %0d: STORE...", i);
             end
             
-            if ((i % factor) == 0) $display("Ciclo [%0d]", i);
+            i++;
+        end
+
+        if (_cpu.WB_INSTR[31:0] == 32'h1E000080) begin
+             $display("[SISTEMA] Instruccion end encontrada.");
+
         end
 
         // --- Volcado final de las memorias ---

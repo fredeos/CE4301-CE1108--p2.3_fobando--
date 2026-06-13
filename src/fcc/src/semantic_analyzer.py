@@ -32,6 +32,7 @@ from ast_nodes import (
 
 from symbol_table import (
     PARAM_REGISTER_LIMIT,
+    PROGRAM_RESULT_SYMBOL,
     SymbolTable,
     Symbol,
     TypeInfo,
@@ -293,6 +294,8 @@ class SemanticAnalyzer:
     def _register_top_level(self, program: ProgramNode):
         """Registra funciones y globales antes del recorrido semantico fino."""
 
+        self._register_program_result_symbol()
+
         for decl in program.declarations:
             if isinstance(decl, FunctionDeclNode):
                 self._register_function_symbol(decl)
@@ -301,6 +304,24 @@ class SemanticAnalyzer:
             elif isinstance(decl, ImportNode):
                 # En esta version no se resuelven imports semanticos profundos.
                 pass
+
+    def _register_program_result_symbol(self):
+        """Reserva una celda global interna para el resultado final."""
+
+        if PROGRAM_RESULT_SYMBOL in self.symbol_table.global_scope.symbols:
+            return
+
+        symbol = Symbol(
+            name=PROGRAM_RESULT_SYMBOL,
+            kind="compiler_result",
+            type_info=TypeInfo("int"),
+            scope_name="global",
+            line=0,
+            column=0,
+            extra={"compiler_generated": True, "readonly": True},
+        )
+        self.symbol_table.define_global(symbol)
+        self.symbol_table.assign_global_address(symbol)
 
     def _register_function_symbol(self, node: FunctionDeclNode):
         """Crea la entrada global de una funcion y su firma."""
