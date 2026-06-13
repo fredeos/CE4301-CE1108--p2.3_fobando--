@@ -16,14 +16,12 @@ module pipeline_wcache_tb ();
     int cache_l1_accesses = 0;
     int cache_l1_misses = 0;
 
-
     int cache_l2_accesses = 0;
     int cache_l2_misses = 0;
 
     int miss_rate_l1 = 0;
     int miss_rate_l2 = 0;
-
-
+    int amat = 0;
 
 
     always #5 clk = ~clk;
@@ -87,10 +85,13 @@ module pipeline_wcache_tb ();
         $display("\n--- Cache L1 ---");
 
         force _cpu._pmu.read_addr = 5'd8; #10; pmu_val = _cpu._pmu.read_data;
+        assing cache_l1_accesses = _cpu._pmu.read_data;
+
         $display("Total L1 Accesses : %0d", pmu_val);
 
         force _cpu._pmu.read_addr = 5'd2; #10; pmu_val = _cpu._pmu.read_data;
         $display("Total L1 Misses : %0d", pmu_val);
+        assing cache_l1_misses = _cpu._pmu.read_data;
         
         force _cpu._pmu.read_addr = 5'd3; #10; pmu_val = _cpu._pmu.read_data;
         $display("L1 Miss Read  : %0d", pmu_val);
@@ -98,14 +99,19 @@ module pipeline_wcache_tb ();
         force _cpu._pmu.read_addr = 5'd4; #10; pmu_val = _cpu._pmu.read_data;
         $display("L1 Miss Write  : %0d", pmu_val);
 
+        assing miss_rate_l1 = cache_l1_misses / cache_l1_accesses;
+        $display("Miss Rate L1 : %0d", miss_rate_l1);
+
 
         $display("\n--- Cache L2 ---");
 
         force _cpu._pmu.read_addr = 5'd9; #10; pmu_val = _cpu._pmu.read_data;
         $display("Total L2 Accesses : %0d", pmu_val);
+        assing cache_l2_accesses = _cpu._pmu.read_data;
         
         force _cpu._pmu.read_addr = 5'd5; #10; pmu_val = _cpu._pmu.read_data;
         $display("Total L2 Misses : %0d", pmu_val);
+        assing cache_l2_misses = _cpu._pmu.read_data;
 
         
         force _cpu._pmu.read_addr = 5'd6; #10; pmu_val = _cpu._pmu.read_data;
@@ -114,6 +120,9 @@ module pipeline_wcache_tb ();
         force _cpu._pmu.read_addr = 5'd7; #10; pmu_val = _cpu._pmu.read_data;
         $display("L2 Miss Write  : %0d", pmu_val);
 
+        assing miss_rate_l2 = cache_l2_misses / cache_l2_accesses;
+        $display("Miss Rate L2 : %0d", miss_rate_l2);
+
         $display("\n--- General ---");
 
         force _cpu._pmu.read_addr = 5'd1; #10; pmu_val = _cpu._pmu.read_data;
@@ -121,6 +130,9 @@ module pipeline_wcache_tb ();
 
         force _cpu._pmu.read_addr = 5'd0; #10; pmu_val = _cpu._pmu.read_data - secure_ending_cycles;
         $display("Total Cycles  : %0d", pmu_val);
+
+
+
 
         // Liberamos el force para devolver el control al diseño normal
         release _cpu._pmu.read_addr;
