@@ -63,9 +63,10 @@ module writebuf #(
         return bits;
     endfunction
 
-    function automatic logic [63:0] pack_bytes(
-        input logic [1:0] byte_offset,
-        input logic [31:0] dta
+    // 2. Byte packing for boundary handling
+    function automatic logic [63:0] pack_bytes( // auxiliary function to pack bytes of data based on offset
+        input logic [1:0] byte_offset, // byte offset
+        input logic [31:0] dta         // data
     ); 
         logic [63:0] b = 64'b0;
 
@@ -74,7 +75,7 @@ module writebuf #(
         return b;
     endfunction
 
-    // 2. Selection of found bits
+    // 3. Selection of found bits
     function automatic logic [3:0] get_selection( // auxiliary decoder for retrieving selected bits
         input logic [1:0] byte_offset, // byte offset
         input logic [7:0] reference,   // reference bit boundaries
@@ -92,6 +93,7 @@ module writebuf #(
         return selection;
     endfunction
 
+    // 4. Overlap mapping
     typedef struct packed {
         logic [7:0] overlap1;
         logic [7:0] overlap2;
@@ -102,19 +104,19 @@ module writebuf #(
     } overlap_map_t;
 
     function automatic overlap_map_t map_overlap ( // auxiliary decoder for byte overlap mapping
-        input logic valid,
-        input logic [1:0][29:0] idx1,
-        input logic [7:0]  bitmap1,
-        input logic [1:0]  offset1,
-        input logic [1:0][29:0] idx2,
-        input logic [7:0]  bitmap2,
-        input logic [1:0]  offset2
+        input logic valid,            // valid condition of this map
+        input logic [1:0][29:0] idx1, // index's for 1st and 2nd words of operand 1
+        input logic [7:0]  bitmap1,   // bit boundary map for operand 1
+        input logic [1:0]  offset1,   // offset for operand 1
+        input logic [1:0][29:0] idx2, // index's for 1st and 2nd words of operand 2
+        input logic [7:0]  bitmap2,   // bit boundary map for operand 2
+        input logic [1:0]  offset2    // offset for operand 2
     ); 
         overlap_map_t m;
 
         logic [2:0] pos1 = {1'b0, offset1};
         logic [2:0] pos2 = {1'b0, offset2};
-        if ((idx1[0] == idx2[0]) && valid) begin    // overlap type 1: word[0] from 1st matches word[0] from 2nd
+        if ((idx1[0] == idx2[0]) && valid) begin    // overlap type 1: 1st word of operand 1 matches 1st word of operand 2
             m.overlap1 = bitmap1 & bitmap2;
             m.overlap2 = bitmap1 & bitmap2;
             m.ovtype = 2'b01;
@@ -127,7 +129,7 @@ module writebuf #(
                 m.start2 = pos1;
             end
         end
-        else if ((idx1[1] == idx2[0]) && valid) begin // overlap type 2: word[1] from 1st matches word[0] from 2nd
+        else if ((idx1[1] == idx2[0]) && valid) begin // overlap type 2: 2nd word of operand 1 matches 1st word of operand 2
             m.overlap1 = {bitmap1[7:4] & bitmap2[3:0], 4'b0000};
             m.overlap2 = {4'b0000, bitmap1[7:4] & bitmap2[3:0]};
             m.ovtype = 2'b10;
@@ -141,7 +143,7 @@ module writebuf #(
                 m.start2 = pos2;
             end
         end
-        else if ((idx1[0] == idx2[1]) && valid) begin // overlap type 3: word[0] from 1st matches word[1] from 2nd
+        else if ((idx1[0] == idx2[1]) && valid) begin // overlap type 3: 1st word of operand 1 matches 2nd word of operand 2
             m.overlap1 = {4'b0000, bitmap1[3:0] & bitmap2[7:4]};
             m.overlap2 = {bitmap1[3:0] & bitmap2[7:4], 4'b0000};
             m.ovtype = 2'b11;
@@ -167,14 +169,15 @@ module writebuf #(
         return m;
     endfunction
 
+    // 5. Overlap byte decoding: obtain the correct selected bytes from map hits
     function automatic logic [31:0] set_bytes (
-        logic [31:0] base,
-        logic [63:0] pack,
-        logic [1:0]  map_type,
-        logic valid_map,
-        logic [7:0]  map,
-        logic [1:0]  idx,
-        logic [2:0]  pos
+        logic [31:0] base, // current selection of bytes
+        logic [63:0] pack, // pack of bytes for map
+        logic [1:0]  map_type, // type of map
+        logic valid_map,  // valid map
+        logic [7:0]  map, // overlapping map bits
+        logic [1:0]  idx, // selection index (where bytes will be written)
+        logic [2:0]  pos  // selection position (from where bytes will extracted)
     );
         logic [31:0] prod = base;
         
@@ -217,7 +220,6 @@ module writebuf #(
 
         return prod;
     endfunction
-
 
     // --- Lookup logic (asynchronous) ---
     // NOTE: similarly to how its done in cache and memory it is required to obtain byte offset
