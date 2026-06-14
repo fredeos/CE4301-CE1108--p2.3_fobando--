@@ -58,5 +58,15 @@ Notese que en los diagramas anteriores se resaltan las entradas y salidas del Ha
     Circuito secuencial para lectura y escritura 16 palabras/llaves necesarias para aplicaciones de criptografía. El procesador siempre inicia con un conjunto de llaves por defecto. La memoria está alineada por palabra, pero es direccionable por byte por medio de detección cruce del límite de palabra lo que permite acceder a bytes de palabras contiguas. Permite escritura en flanco positivos de reloj y lectura combinacional.
   - **Memoria de datos (*Data Memory*)**:
     Circuito secuencial para lectura y escritura de datos. La memoria está alineada por palabra, pero es direccionable por byte por medio de detección cruce del límite de palabra lo que permite acceder a bytes de palabras contiguas. Permite escritura en flanco negativos de reloj y lectura en flancos positivos.
+  - **Memoria caché**:
+    Circuito secuencial para lectura y escritura de datos en flancos positivos y negativos, respectivamente. Utiliza alineamiento por palabra y direccionamiento por byte. Además, implementa detección de cruce del límite de palabra para identifcar si una lectura o escritura accede a bytes de una palabra contigua y por ende debe verificar que ambas palabras estén mapeadas en caché en algún set.
+  - **Buffer de escritura (*Write Buffer*)**:
+    Circuito secuencial que permite almacenar una cola de escrituras en niveles de la jerarquía de memoria. La cola se mueve en flancos negativos para acoplarse correctamente con las escrituras de las memorias.
+  - **Generador aleatorio (*Random generat*)**:
+    Circuito secuencial para generar números aleatorios necesario para implementar una política de reemplazo random.
+  - **Memoria empaquetada (*Packed Memory*)**:
+    Módulo secuencial que empaqueta la jerarquía de memoria junto con los controladores de escrituras y lecturas. Además produce las señales relevantes para el cálculo de métricas.
+  - **Perfomance Monitoring Unit (*PMU*)**:
+    Módulo secuencial que almacena en registro información relevante sobre accesos a memorias, ciclos y rendimiento del procesador. Es necesario para poder calcular el desempeño entre un procesador con y sin jerarquía de memoria con latencia real.
   - **Unidad de riesgos (*Hazard Unit*)**:
     Unidad combinacional encargada de detectar riesgos de datos y de control y controlar el flujo del pipeline por medio de adelantamientos, stalls y flushes. Este circuito implementa adelantamiento de MEM hacia EX y WB hacia ALU. Además, requiere de que el pipeline propague las instrucciones en cada etapa para determinar los tipos de adelantamiento y activación de los stall y flush necesarias para solucionar los riesgos.
