@@ -96,9 +96,12 @@ module pipeline_wcache ( // Pipeline de 5 etapas para arquitectura RISC: F32IS
     logic       cache_search_ready;
     logic       cache_write_ready;
     logic       cache_write_halt;
-    logic       cache_l1_access;
-    logic       cache_l2_access;
-    logic       cache_M_access;
+    logic       cache_l1_write_access;
+    logic       cache_l1_read_access;
+    logic       cache_l2_write_access;
+    logic       cache_l2_read_access;
+    logic       cache_M_write_access;
+    logic       cache_M_read_access;
 
 
     logic ID_end_program;
@@ -419,8 +422,8 @@ module pipeline_wcache ( // Pipeline de 5 etapas para arquitectura RISC: F32IS
         .write_hit(),
         .read_miss(cache_read_miss),
         .write_miss(cache_write_miss),
-        .read_access({cache_M_access, cache_l2_access, cache_l1_access}),
-        .write_access()
+        .read_access({cache_M_read_access, cache_l2_read_access, cache_l1_read_access}),
+        .write_access({cache_M_write_access, cache_l2_write_access, cache_l1_write_access})
     );
 
     // --- 5. Writeback (WB) ---
@@ -502,8 +505,10 @@ module pipeline_wcache ( // Pipeline de 5 etapas para arquitectura RISC: F32IS
         .event_cache_l1_miss_write(cache_write_miss[0]),
         .event_cache_l2_miss_read (cache_read_miss[1]),
         .event_cache_l2_miss_write(cache_write_miss[1]),
-        .event_cache_l1_access(cache_l1_access),
-        .event_cache_l2_access(cache_l2_access),
+        .event_cache_l1_write_access(cache_l1_write_access),
+        .event_cache_l1_read_access(cache_l1_read_access),
+        .event_cache_l2_write_access(cache_l2_write_access),
+        .event_cache_l2_read_access(cache_l2_read_access),
         .cache_search_ready(cache_search_ready),
         
         // Interfaz de lectura para registros
