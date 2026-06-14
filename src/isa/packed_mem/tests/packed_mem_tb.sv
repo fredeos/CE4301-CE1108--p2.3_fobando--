@@ -68,8 +68,9 @@ module packed_mem_tb ();
         $display("\tEscritura propagada a una direccion que no ha sido mapeada");
         task_write(32'd28, 4'b0111, 32'hFFEEBBAA, 20);
         // 2. Escritura propagada en todos los nivles (pero esta en cache)
-        $display("\tEscritura propagada a un direccion mapeada");
-        task_write(32'd4, 4'b1111, 32'hCACA0000, 20);
+        $display("\tEscritura propagada a una direccion mapeada");
+        task_write(32'd4, 4'b1111, 32'hCACA0000, 20); // solo mapeado en L2 y MEM
+        task_write(32'd8, 4'b0001, 32'h000000AA, 1); // mapeado en L1, L2 y MEM
         // 3. Escritura adelantada desde el buffer de memoria
         $display("\tEscritura adelantada desde el buffer de memoria");
         task_write(32'd24, 4'b0011, 32'hFFFFFFFF, 1);
