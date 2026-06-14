@@ -99,11 +99,30 @@ module pipeline_wcache ( // Pipeline de 5 etapas para arquitectura RISC: F32IS
     logic       cache_l1_access;
     logic       cache_l2_access;
     logic       cache_M_access;
+
+
+    logic ID_end_program;
+    logic MEM_end_program;
+    logic EX_end_program;
+    logic WB_end_program;
+
+    // Instrucciones para fin de programa
+    localparam logic [31:0] INSTR_END = 32'h1E000080;
     
 
     // ########################################################################################################
     // --- 0. Selección del PC  ---
     assign PC = (WB_PCSrc) ? PC_new : ( (MEM_PCSrc[0]) ? MEM_PCBranch : IF_PCplus4);
+
+    // + Flip-Flop para inicializar end program
+    always_ff @(posedge clk, posedge rst) begin
+        if (rst) begin
+            ID_end_program <= 1'b0;
+            MEM_end_program <= 1'b0;
+            EX_end_program <= 1'b0;
+            WB_end_program <= 1'b0;
+        end
+    end
 
     // --- 1. Instruction Fetch (IF) ---
     // + Flip-Flop para pipe IF
@@ -131,15 +150,19 @@ module pipeline_wcache ( // Pipeline de 5 etapas para arquitectura RISC: F32IS
     // --- 2. Instruction Decode (ID) ---
     // + Flip-Flop para pipe ID
     always_ff @(posedge clk, posedge rst) begin
-        if (rst | ID_CLR) begin 
+        if (rst | ID_CLR | ID_end_program) begin 
             ID_INSTR <= nop;
             ID_PCplus4 <= '0;
             ID_LoginRefresh <= '0;
         end else if (~ID_EN) begin 
+            if (!ID_end_program) begin 
+                ID_end_program <= (ID_INSTR == INSTR_END);
+            end
             ID_INSTR <= IF_INSTR;
             ID_PCplus4 <= IF_PCplus4;
             ID_LoginRefresh <= IF_LoginRefresh;
         end
+        
     end
 
     assign ID_OPCODE = ID_INSTR[5:1];
@@ -206,7 +229,7 @@ module pipeline_wcache ( // Pipeline de 5 etapas para arquitectura RISC: F32IS
     // --- 3. Execute (EX) ---
     // + Flip-Flop para pipe EX
     always_ff @(posedge clk, posedge rst) begin
-        if (rst | EX_CLR) begin 
+        if (rst | EX_CLR | EX_end_program) begin 
             EX_INSTR <= nop;
             EX_PCplus4 <= '0;
             EX_Op1 <= '0;
@@ -227,6 +250,11 @@ module pipeline_wcache ( // Pipeline de 5 etapas para arquitectura RISC: F32IS
             EX_MemToReg <= '0;
             EX_LoginRefresh <= '0;
         end else if (~EX_EN) begin 
+
+            if (!EX_end_program) begin 
+                EX_end_program <= (EX_INSTR == INSTR_END);
+            end
+
             EX_INSTR <= ID_INSTR;
             EX_PCplus4 <= ID_PCplus4;
             EX_Op1 <= ID_Op1;
@@ -247,6 +275,7 @@ module pipeline_wcache ( // Pipeline de 5 etapas para arquitectura RISC: F32IS
             EX_MemToReg <= ID_MemToReg;
             EX_LoginRefresh <= ID_LoginRefresh;
         end
+        
     end
 
     // + ALU primaria
@@ -298,6 +327,9 @@ module pipeline_wcache ( // Pipeline de 5 etapas para arquitectura RISC: F32IS
             MEM_MemToReg <= '0;
             MEM_LoginRefresh <= '0;
         end else if (~MEM_EN) begin
+            if (!MEM_end_program) begin 
+                MEM_end_program <= (MEM_INSTR == INSTR_END);
+            end
             MEM_INSTR <= EX_INSTR;
             MEM_RWB <= EX_RWB;
             MEM_ALUFlags <= EX_ALUFlags;
@@ -314,6 +346,7 @@ module pipeline_wcache ( // Pipeline de 5 etapas para arquitectura RISC: F32IS
             MEM_MemToReg <= EX_MemToReg;
             MEM_LoginRefresh <= EX_LoginRefresh;
         end
+
     end
 
     // + Unidad de administrador
@@ -393,7 +426,7 @@ module pipeline_wcache ( // Pipeline de 5 etapas para arquitectura RISC: F32IS
     // --- 5. Writeback (WB) ---
     // + Flip-Flop para pipe WB
     always_ff @(posedge clk, posedge rst) begin
-        if (rst) begin
+        if (rst | WB_end_program) begin
             WB_INSTR <= nop;
             WB_ALUOut <= '0;
             WB_MemOut <= '0;
@@ -405,6 +438,10 @@ module pipeline_wcache ( // Pipeline de 5 etapas para arquitectura RISC: F32IS
             WB_MemToReg <= '0;
             WB_RegWrite <= '0;
         end else if (~WB_EN) begin 
+            if (!WB_end_program) begin 
+                WB_end_program <= (WB_INSTR == INSTR_END);
+            end
+
             WB_INSTR <= MEM_INSTR;
             WB_ALUOut <= MEM_ALUOut;
             WB_MemOut <= MEM_MemOut;
@@ -416,6 +453,7 @@ module pipeline_wcache ( // Pipeline de 5 etapas para arquitectura RISC: F32IS
             WB_MemToReg <= MEM_MemToReg;
             WB_RegWrite <= MEM_RegWrite;
         end
+
     end
 
     // + Seleccionar señales de salida

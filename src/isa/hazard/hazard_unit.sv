@@ -60,6 +60,7 @@ module hazard_unit #(
     // Instrucciones nop invalida
     localparam logic [31:0] nop = 32'h00000080;
 
+
     // Opcodes segun la tabla de encodificacion del ISA.md
     localparam logic [4:0] OP_R    = 5'b00000; // add
     localparam logic [4:0] OP_I    = 5'b00001; // addi
