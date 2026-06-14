@@ -6,8 +6,9 @@
 module cache #(
     parameter int SIZE = 32,    // Cache memory SIZE (in bytes) [default: 32 bytes]
     parameter int WPL  = 2,     // words-per-line               [default: 2 (min)]
-    parameter int WAYS = 2,     // Cache memory number of WAYS per line [default: 2 (min)]
-    parameter int LATENCY = 1   // Cache memory LATENCY simulation (number of CLK cycles) [default: 1 (min)]
+    parameter int WAYS = 2,     // Cache memory number of WAYS per set [default: 2 (min)]
+    parameter int LATENCY = 1,  // Cache memory LATENCY simulation (number of CLK cycles) [default: 1 (min)]
+    parameter bit REPLACEMENT_MODE = 0 // Replacement policy mode: 0 for FIFO, 1 for Random [default: 0]
 )( 
     // + Sequential logic inputs
     input  logic CLK,        // clock signal pulse
@@ -80,6 +81,28 @@ initial begin
         end
     end
 end
+
+// --- Random replacement policy (if selected) ---
+logic [way_bits-1:0] randway [0:1];
+generate;
+    if (REPLACEMENT_MODE == 1) begin 
+        logic [31:0] randnums [0:1];
+
+        randgen #(.WIDTH(32)) randgen1 (
+            .clk(CLK), .rst(RST), 
+            .seed(32'hDEADBEEF), 
+            .random(randnums[0])
+        );
+        assign randway[0] = randnums[0][3 +: way_bits];
+        
+        randgen #(.WIDTH(32)) randgen2 (
+            .clk(CLK), .rst(RST), 
+            .seed(32'hC0FFEE00), 
+            .random(randnums[1])
+        );
+        assign randway[1] = randnums[1][1 +: way_bits];
+    end
+endgenerate
 
 // --- Auxiliary functions/decoders ----
 // 1. Address decoding
@@ -155,15 +178,14 @@ assign {rd_tag[0], rd_set[0], rd_block_offset[0]} = decode_address(rd_word_idx[0
 assign {rd_tag[1], rd_set[1], rd_block_offset[1]} = decode_address(rd_word_idx[1]);
 
 // 2. Check boundary crossing
-logic rd_is_crossing;
-assign rd_is_crossing = is_crossing(rd_byte_offset, RBM);
+wire rd_is_crossing = is_crossing(rd_byte_offset, RBM);
+wire rd_diff_sets   = rd_is_crossing & (rd_set[0] != rd_set[1]);
 
 // 3. Hit detection
 // + Check hits on each way of the mapped set
 logic [WAYS-1:0] rd_hits [0:1]; // [0]: nearest word, [1]: next word
-generate
-    genvar i;
-    for (i = 0; i < WAYS; i++) begin
+generate;
+    for (genvar i = 0; i < WAYS; i++) begin
         assign rd_hits[0][i] = hit_detect(rd_tag[0], tags[rd_set[0]][i][tag_bits], tags[rd_set[0]][i][tag_bits-1:0]);
         assign rd_hits[1][i] = hit_detect(rd_tag[1], tags[rd_set[1]][i][tag_bits], tags[rd_set[1]][i][tag_bits-1:0]);
     end
@@ -296,9 +318,9 @@ always_ff @(posedge CLK, posedge RST) begin
         end
         // >> Miss logic <<
         miss[0] <= ~rd_hit[0] & rd_done & RE & ~ignore;
-        miss[1] <= ~rd_hit[1] & rd_done & RE & rd_is_crossing & ~ignore;
+        miss[1] <= ~rd_hit[1] & rd_done & RE & rd_diff_sets & ~ignore;
         MA1 <= (~rd_hit[0] & rd_done & RE & ~ignore) ? {rd_word_idx[0], 2'b00} : '0;
-        MA2 <= (~rd_hit[1] & rd_done & RE & rd_is_crossing & ~ignore) ? {rd_word_idx[1], 2'b00} : '0;
+        MA2 <= (~rd_hit[1] & rd_done & RE & rd_diff_sets & ~ignore) ? {rd_word_idx[1], 2'b00} : '0;
         if (rd_post_misses & ~ignore) begin 
             locked <= 1'b1;
         end
@@ -384,8 +406,7 @@ wire wd_done = (write_counter == LATENCY-1);
 logic [WAYS-1:0] wd_hits [0:1]; // [0]: nearest word, [1]: next word
 
 generate
-    genvar j;
-    for (j = 0; j < WAYS; j++) begin
+    for (genvar j = 0; j < WAYS; j++) begin
         assign wd_hits[0][j] = hit_detect(wd_tag[0], tags[wd_set[0]][j][tag_bits], tags[wd_set[0]][j][tag_bits-1:0]);
         assign wd_hits[1][j] = hit_detect(wd_tag[1], tags[wd_set[1]][j][tag_bits], tags[wd_set[1]][j][tag_bits-1:0]);
     end
@@ -397,6 +418,9 @@ wire clk_align = wd_done & fill;
 // + Detect if input burst matches with missing address
 wire addr1_match = miss[0] & (burst_tag[0] == miss_tag[0]) & (burst_set[0] == miss_set[0]);
 wire addr2_match = miss[1] & (burst_tag[1] == miss_tag[1]) & (burst_set[1] == miss_set[1]);
+
+// + Detect if bursts are different
+wire diff_bursts = (burst_set[0] != burst_set[1]);
 
 // + Detect if the writing address' match with any of the input bursts
 logic [1:0] wd_match [0:1]; // [0]: nearest word, [1]: next word
@@ -449,30 +473,45 @@ always_ff @(negedge CLK, posedge RST) begin
         // + Replacement logic (on every clock negedge)[FIFO policy]
         line_is_filled[0] <= addr1_match & fill;
         line_is_filled[1] <= addr2_match & fill;
-        for (int i = 0; i < WAYS; i++) begin
-            // Update tags
-            // Burst 1
-            if (fill && addr1_match) begin 
-                if (i == 0) tags[burst_set[0]][i] <= {1'b1, burst_tag[0]};
-                else tags[burst_set[0]][i] <= tags[burst_set[0]][i-1];
-            end
-            // Burst 2
-            if (fill && addr2_match) begin
-                if (i == 0) tags[burst_set[1]][i] <= {1'b1, burst_tag[1]};
-                else tags[burst_set[1]][i] <= tags[burst_set[1]][i-1];
-            end
-            // Update data
-            for (int j = 0; j < WPL; j++) begin
+        if (REPLACEMENT_MODE == 0) begin          // FIFO
+            for (int i = 0; i < WAYS; i++) begin
+                // Update tags
                 // Burst 1
-                if (fill && addr1_match) begin
-                    if (i == 0) data[burst_set[0]][i][j] <= in_burst1[j];
-                    else data[burst_set[0]][i][j] <= data[burst_set[0]][i-1][j];
+                if (fill && addr1_match) begin 
+                    if (i == 0) tags[burst_set[0]][i] <= {1'b1, burst_tag[0]};
+                    else tags[burst_set[0]][i] <= tags[burst_set[0]][i-1];
                 end
                 // Burst 2
-                if (fill && addr2_match) begin
-                    if (i == 0) data[burst_set[1]][i][j] <= in_burst2[j];
-                    else data[burst_set[1]][i][j] <= data[burst_set[1]][i-1][j];
+                if (fill && addr2_match && diff_bursts) begin
+                    if (i == 0) tags[burst_set[1]][i] <= {1'b1, burst_tag[1]};
+                    else tags[burst_set[1]][i] <= tags[burst_set[1]][i-1];
                 end
+                // Update data
+                for (int j = 0; j < WPL; j++) begin
+                    // Burst 1
+                    if (fill && addr1_match) begin
+                        if (i == 0) data[burst_set[0]][i][j] <= in_burst1[j];
+                        else data[burst_set[0]][i][j] <= data[burst_set[0]][i-1][j];
+                    end
+                    // Burst 2
+                    if (fill && addr2_match && diff_bursts) begin
+                        if (i == 0) data[burst_set[1]][i][j] <= in_burst2[j];
+                        else data[burst_set[1]][i][j] <= data[burst_set[1]][i-1][j];
+                    end
+                end
+            end
+        end else if (REPLACEMENT_MODE == 1) begin // RANDOM
+            // Update tags
+            // Burst 1
+            if (fill && addr1_match) tags[burst_set[0]][randway[0]] <= {1'b1, burst_tag[0]};
+            // Burst 2
+            if (fill && addr2_match && diff_bursts) tags[burst_set[1]][randway[1]] <= {1'b1, burst_tag[1]};
+            // Update data
+            for (int i = 0; i < WPL; i++) begin 
+                // Burst 1
+                if (fill && addr1_match) data[burst_set[0]][randway[0]][i] <= in_burst1[i];
+                // Burst 2
+                if (fill && addr2_match && diff_bursts) data[burst_set[1]][randway[1]][i] <= in_burst2[i];
             end
         end
         // + Write data (only during post results stages)

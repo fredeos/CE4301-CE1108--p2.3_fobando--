@@ -13,6 +13,7 @@ module packed_mem_tb ();
         .L1_SIZE(32), .L2_SIZE(64), .MEM_SIZE(256),
         .L1_ASO(2), .L2_ASO(4),
         .WPL(2),
+        .L1_MODE(0), .L2_MODE(1),
         .BUF1_SIZE(4), .BUF2_SIZE(4), .BUF3_SIZE(2)
     ) _mem (
         .CLK(clk), .RST(rst),
