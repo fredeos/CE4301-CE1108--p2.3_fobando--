@@ -17,7 +17,7 @@ A continuación se describen las características de la memoria caché y memoria
 + **TAMAÑO DE LÍNEA**: *(modificable)* 32 bytes
 + **LATENCIA**: *(modificable)* 1 ciclo
 + **ESCRITURA**: write-through con buffer de escritura
-+ **REEMPLAZO**: FIFO
++ **REEMPLAZO**: FIFO o Random
 
 ### Caché L2
 
@@ -26,7 +26,7 @@ A continuación se describen las características de la memoria caché y memoria
 + **TAMAÑO DE LÍNEA**: *(modificable)* 32 bytes
 + **LATENCIA**: *(modificable)* 8 ciclos
 + **ESCRITURA**: write-through con buffer de escritura
-+ **REEMPLAZO**: FIFO
++ **REEMPLAZO**: FIFO o Random
 
 ### Memoria Principal
 
@@ -56,7 +56,7 @@ Por otro lado, el control sobre las escrituras depende de si alguno de los buffe
 
 ### Selección de políticas de reemplazo
 
-Para ambas caché se escoge una política de reemplazo FIFO para reemplzar siempre la primer vía del set al que se mapea los datos faltantes por un miss (llenar la línea).
+En vista de que las caché L1 y L2 son descritas por un mismo módulo de caché génerico que permite alternar entre políticas de reemplazo FIFO y random, se implementan ambas políticas para ambas. Sin embargo, usando FIFO en ambos niveles se obtiene un mejor desempeño ya que, al L2 tener mayor tamaño y más vías, cuando se desalojan líneas en L1 es más probable volver a encontrarlas en L2 debido a que las escrituras se propagan en los buffers de escritura; esto funciona casi como una caché víctima, pero un coste de latencia mayor debido a las restricciones de L2. Caso contrario, si L2 utiliza una política random, al desalojar líneas en L1 es menos probable volver a encontrarlas en L2. Por está razón es recomendable utilizar combinaciones de políticas como FIFO-FIFO o Random-FIFO, ya que son más óptimas.
 
 ### Diseño de dispositivos controladores de memoria (FSM)
 
