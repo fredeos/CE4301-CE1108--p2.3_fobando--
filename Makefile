@@ -18,6 +18,10 @@ INSTRMEM = ${CPU_SRC}/instrmem
 
 DATAMEM = ${CPU_SRC}/datamem
 
+CACHE = ${CPU_SRC}/cache
+
+PACKEDM = ${CPU_SRC}/packed_mem
+
 VAULT = ${CPU_SRC}/vault
 
 # --- Directorios de bancos registros ---
@@ -59,8 +63,14 @@ ssu: dirs
 instrmem: dirs
 	iverilog -g2012 -o ${GEN}/$@.out ${INSTRMEM}/*.sv ${INSTRMEM}/tests/*.sv
 
+cache: dirs
+	iverilog -g2012 -o ${GEN}/$@.out ${CACHE}/*.sv ${CACHE}/tests/*.sv
+
 datamem: dirs
 	iverilog -g2012 -o ${GEN}/$@.out ${DATAMEM}/*.sv ${DATAMEM}/tests/*.sv
+
+packed_mem: dirs
+	iverilog -g2012 -o ${GEN}/$@.out ${PACKEDM}/*.sv ${CACHE}/*.sv ${DATAMEM}/*.sv ${PACKEDM}/tests/*.sv
 
 vault: dirs
 	iverilog -g2012 -o ${GEN}/$@.out ${VAULT}/*.sv ${VAULT}/tests/*.sv
