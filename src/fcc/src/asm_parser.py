@@ -199,7 +199,7 @@ def parse_assembly_file(filepath: str | Path) -> List[Instruction]:
 
 # --- USO ---
 if __name__ == "__main__":
-    instrucciones = parse_assembly_file(".\\prueba.asm")
+    instrucciones = parse_assembly_file("./input/prueba.asm")
     for i, instr in enumerate(instrucciones):
         print(f"[{i}] {instr}")
 
@@ -207,8 +207,8 @@ if __name__ == "__main__":
 
     # PASO B: Persistencia de archivos
     # Generamos la salida para el simulador y el binario para el hardware real.
-    F32IS_Writer.save_bin("with_parser.bin", encoded_instructions)
-    F32IS_Writer.save_hex("with_parser.hex", encoded_instructions)
+    F32IS_Writer.save_bin("./input/with_parser.bin", encoded_instructions)
+    F32IS_Writer.save_hex("./input/with_parser.hex", encoded_instructions)
 
     # PASO C: Reporte de depuración en consola
     # Este reporte ayuda a verificar que los saltos de PC (de 4 en 4) y los HEX sean correctos.

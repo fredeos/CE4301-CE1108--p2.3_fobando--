@@ -36,7 +36,7 @@ module pipeline_wcache_tb ();
     );
 
     initial begin 
-        $dumpfile("./gen/pipeline.vcd");
+        $dumpfile("./gen/pipeline_wcache.vcd");
         $dumpvars(0, pipeline_wcache_tb); 
         
         clk = 0; 

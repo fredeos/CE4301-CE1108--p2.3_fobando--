@@ -10,4 +10,3 @@ __init__:    # addr=0
         blt r1, r0, -7
     
     end
-

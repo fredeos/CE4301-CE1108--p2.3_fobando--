@@ -98,6 +98,7 @@ module pipeline_wcache ( // Pipeline de 5 etapas para arquitectura RISC: F32IS
     logic       cache_write_halt;
     logic       cache_l1_access;
     logic       cache_l2_access;
+    logic       cache_M_access;
     
 
     // ########################################################################################################
@@ -380,9 +381,13 @@ module pipeline_wcache ( // Pipeline de 5 etapas para arquitectura RISC: F32IS
         
         // Conexión a señales internas
         .ready({cache_write_ready, cache_search_ready}),
+        .halt(cache_write_halt),
+        .read_hit(),
+        .write_hit(),
         .read_miss(cache_read_miss),
         .write_miss(cache_write_miss),
-        .halt(cache_write_halt)
+        .read_access({cache_M_access, cache_l2_access, cache_l1_access}),
+        .write_access()
     );
 
     // --- 5. Writeback (WB) ---
