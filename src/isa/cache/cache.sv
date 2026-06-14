@@ -28,16 +28,16 @@ module cache #(
     output logic [1:0] ready, // cache ready
     output logic locked,      // cache locked (only for reading)
     // + Miss logic input signals
-    input  logic fill,
-    input  logic [31:0] in_addr_burst1,
-    input  logic [31:0] in_addr_burst2,
-    input  logic [WPL-1:0][31:0] in_burst1,
-    input  logic [WPL-1:0][31:0] in_burst2,
+    input  logic fill,  // fill missing lines
+    input  logic [31:0] in_addr_burst1, // input burst 1 address
+    input  logic [31:0] in_addr_burst2, // input burst 2 address
+    input  logic [WPL-1:0][31:0] in_burst1, // input burst 1
+    input  logic [WPL-1:0][31:0] in_burst2, // input burst 2
     // + Miss logic output signals
-    output logic [31:0] out_addr_burst1,
-    output logic [31:0] out_addr_burst2,
-    output logic [WPL-1:0][31:0] out_burst1,
-    output logic [WPL-1:0][31:0] out_burst2,
+    output logic [31:0] out_addr_burst1, // output burst 1 address
+    output logic [31:0] out_addr_burst2, // output burst 2 address
+    output logic [WPL-1:0][31:0] out_burst1, // output burst 1
+    output logic [WPL-1:0][31:0] out_burst2, // output burst 2
     // + Write-through output signals
     output logic queue,      // write buffer queue
     output logic dequeue,    // write buffer dequeue

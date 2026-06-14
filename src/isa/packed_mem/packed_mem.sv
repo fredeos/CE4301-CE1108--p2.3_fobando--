@@ -31,10 +31,14 @@ module packed_mem #(
     input  logic [31:0] WD, // write data
     output logic [31:0] RD, // read data
     // + Output control signals
-    output logic [1:0] ready,      // read ready signal
-    output logic halt,             // write halt signal
-    output logic [1:0] read_miss,  // [0]: L1, [1]: L2
-    output logic [1:0] write_miss  // [0]: L1, [1]: L2
+    output logic [1:0] ready,       // read ready signal => [0]: read, [1]: write
+    output logic halt,              // write halt signal
+    output logic [2:0] read_hit,    // [0]: L1, [1]: L2, [2]: MEM
+    output logic [2:0] write_hit,   // [0]: L1, [1]: L2, [2]: MEM
+    output logic [1:0] read_miss,   // [0]: L1, [1]: L2
+    output logic [1:0] write_miss,  // [0]: L1, [1]: L2
+    output logic [2:0] read_access, // [0]: L1, [1]: L2, [2]: MEM
+    output logic [2:0] write_access // [0]: L1, [1]: L2, [2]: MEM
 );
     // --- Internal signals ---
     // 1. Control signals
@@ -57,9 +61,12 @@ module packed_mem #(
     wire L2_write_miss = ~L2_hits[1] & L2_rdy[1]; // true miss
 
     wire M_read_hit  = M_rdy[0]; // true hit 
-    wire M_write_hit = M_rdy[1]; // true miss
+    wire M_write_hit = M_rdy[1]; // true hit
 
+    assign read_hit  = {M_read_hit, L2_read_hit, L1_read_hit};
     assign read_miss = {L2_read_miss, L1_read_miss};
+
+    assign write_hit  = {M_write_hit, L2_write_hit, L1_write_hit};
     assign write_miss = {L2_write_miss, L1_write_miss};
 
     // 2. Data signals
@@ -87,8 +94,8 @@ module packed_mem #(
     logic [WPL-1:0][31:0] M_burst [0:1]; // [0]: burst1, [1]: burst2
 
     // 4. Write-through buffer signals
-    logic [2:0] queue, dequeue; // [0]: IN, [1]: L1, [2]: L2
-    logic [2:0] valid, full;    // [0]: IN, [1]: L1, [2]: L2
+    logic [2:0] queue, dequeue; // [0]: L1, [1]: L2, [2]: M
+    logic [2:0] valid, full;    // [0]: L1, [1]: L2, [2]: M
 
     assign dequeue[2] = M_rdy[1];
 
@@ -137,11 +144,13 @@ module packed_mem #(
     // and filling missing lines (miss penalty)
 
     // 1. FSM state update logic
-    logic [3:0] rd_state, rd_next_state;
+    logic [3:0] rd_state, rd_next_state, rd_prev_state;
     always_ff @(posedge CLK, posedge RST) begin 
         if (RST) begin
             rd_state <= 4'b0000;
+            rd_prev_state <= 4'b0000;
         end else begin
+            rd_prev_state <= rd_state;
             rd_state <= rd_next_state;
         end
     end
@@ -418,5 +427,16 @@ module packed_mem #(
         .burst1_addr(M_burst_addr[0]), .burst2_addr(M_burst_addr[1]),
         .burst1(M_burst[0]), .burst2(M_burst[1])
     );
+
+    // --- Output in-use signals ---
+    // 1. read-in-use signals
+    assign read_access[0] = (rd_state == 4'b0001) & (rd_prev_state == 4'b0000);
+    assign read_access[1] = (rd_state == 4'b0011) & (rd_prev_state == 4'b0001);
+    assign read_access[2] = (rd_state == 4'b0101) & (rd_prev_state == 4'b0011);
+
+    // 2. write-in-use signals
+    assign write_access[0] = dequeue[0] & L1_write_hit;
+    assign write_access[1] = dequeue[1] & L2_write_hit;
+    assign write_access[2] = dequeue[2] & M_write_hit;
 
 endmodule
