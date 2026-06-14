@@ -1,9 +1,9 @@
 // Memory hierarchy compact module for 32 bit architecture (data only)
 // > L1 Cache: associative cache memory
-//  + Replacement policy: FIFO
+//  + Replacement policy: FIFO or RANDOM
 //  + Write policy: write-through (FIFO write buffer)
 // > l2 Cache: associative cache memory
-//  + Replacement policy: FIFO
+//  + Replacement policy: FIFO or RANDOM
 //  + Write policy: write-through (FIFO write buffer)
 // > Main memory
 module packed_mem #(
@@ -16,6 +16,8 @@ module packed_mem #(
     parameter int L1_ASO   = 2,    // L1 associatiavity (number of ways)          [default: 2(min)]
     parameter int L2_ASO   = 4,    // l2 associatiavity (number of ways)          [default: 4]
     parameter int WPL = 2,         // Memory-wide words-per-line                  [default: 2(min)]
+    parameter bit L1_MODE = 0,     // Replacement policy mode for L1              [default: 0(FIFO)]
+    parameter bit L2_MODE = 0,     // Replacement policy mode for L2              [default: 0(FIFO)]
     parameter int BUF1_SIZE = 4,   // Write buffer 1 size (number of words)       [default: 4]
     parameter int BUF2_SIZE = 8,   // Write buffer 2 size (number of words)       [default: 4]
     parameter int BUF3_SIZE = 8    // Write buffer 3 size (number of words)       [default: 4]
@@ -335,7 +337,7 @@ module packed_mem #(
     );
 
     // + Cache module
-    cache #(.SIZE(L1_SIZE), .WPL(WPL), .WAYS(L1_ASO), .LATENCY(L1_LATENCY)) _l1_dut (
+    cache #(.SIZE(L1_SIZE), .WPL(WPL), .WAYS(L1_ASO), .LATENCY(L1_LATENCY), .REPLACEMENT_MODE(L1_MODE)) _l1_dut (
         // + Sequential logic signals
         .CLK(CLK), .RST(RST), .ignore(ignore[0]),
         // + Write signals
@@ -374,7 +376,7 @@ module packed_mem #(
 
     // --- L2 Cache ---
     // + Cache module
-    cache #(.SIZE(L2_SIZE), .WPL(WPL), .WAYS(L2_ASO), .LATENCY(L2_LATENCY)) _l2_dut (
+    cache #(.SIZE(L2_SIZE), .WPL(WPL), .WAYS(L2_ASO), .LATENCY(L2_LATENCY), .REPLACEMENT_MODE(L2_MODE)) _l2_dut (
         // + Sequential logic signals
         .CLK(CLK), .RST(RST), .ignore(ignore[1]),
         // + Write signals

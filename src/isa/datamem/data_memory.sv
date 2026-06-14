@@ -75,8 +75,8 @@ module data_memory #(
 
     // 3. Extract the index of data block start for burst retrieval
     logic [ADDR_WIDTH-1:0] rd_block_idx [0:1];
-    assign rd_block_idx[0] = {rd_word_idx[0][BLOCK_WIDTH +: ADDR_WIDTH], {BLOCK_WIDTH{1'b0}}};
-    assign rd_block_idx[1] = {rd_word_idx[1][BLOCK_WIDTH +: ADDR_WIDTH], {BLOCK_WIDTH{1'b0}}};
+    assign rd_block_idx[0] = {rd_word_idx[0][ADDR_WIDTH-1:BLOCK_WIDTH], {BLOCK_WIDTH{1'b0}} };
+    assign rd_block_idx[1] = {rd_word_idx[1][ADDR_WIDTH-1:BLOCK_WIDTH], {BLOCK_WIDTH{1'b0}} };
 
     logic [31:0] rd_burst_addr [0:1];
     assign rd_burst_addr[0] = {RA[31:ADDR_WIDTH], rd_block_idx[0], 2'b00};
