@@ -200,14 +200,9 @@ module hazard_unit #(
     logic        ex_store_data_wait_hazard;
     logic        ex_secure_store_data_wait_hazard;
 
-    // variable para cache
-    logic mem_is_load_op;
-    logic mem_is_store_op;
-
-    assign mem_is_load_op = mem_valid && (mem_opcode == OP_M_LD);
-    assign mem_is_store_op = mem_valid && (mem_opcode == OP_M_ST);
-
-
+    // variable para cach
+    wire mem_is_load_op  = mem_valid & (mem_opcode == OP_M_LD);
+    wire mem_is_store_op = mem_valid & (mem_opcode == OP_M_ST);
 
     // Una instruccion cero se trata como NOP.
     assign id_valid  = (IDInstr  != nop);
@@ -713,26 +708,20 @@ module hazard_unit #(
             SRC_WB:   RD3FwdEX = DataOutWB;
             default:  RD3FwdEX = RD3PipeEX;
         endcase
-
-        
-        if (mem_is_store_op && (!cache_write_ready || cache_write_halt)) begin
-            StallIF  = 1'b1;
-            StallID  = 1'b1;
-            StallEX  = 1'b1;
-            StallMEM = 1'b1;
-            StallWB  = 1'b1;
-        end
-
-        if (mem_is_load_op && !cache_search_ready) begin
-            StallIF  = 1'b1;
-            StallID  = 1'b1;
-            StallEX  = 1'b1;
-            StallMEM = 1'b1;
-            StallWB  = 1'b1;
-        end
-
         
         if (wb_busy) begin
+            StallIF  = 1'b1;
+            StallID  = 1'b1;
+            StallEX  = 1'b1;
+            StallMEM = 1'b1;
+            StallWB  = 1'b1;
+        end else if (mem_is_store_op && (!cache_write_ready || cache_write_halt)) begin
+            StallIF  = 1'b1;
+            StallID  = 1'b1;
+            StallEX  = 1'b1;
+            StallMEM = 1'b1;
+            StallWB  = 1'b1;
+        end else if (mem_is_load_op && !cache_search_ready) begin
             StallIF  = 1'b1;
             StallID  = 1'b1;
             StallEX  = 1'b1;
@@ -768,9 +757,9 @@ module hazard_unit #(
             StallID = 1'b1;
             FlushEX = 1'b1;
         end else if (ex_store_data_wait_hazard || ex_secure_store_data_wait_hazard) begin
-            StallIF = 1'b1;
-            StallID = 1'b1;
-            StallEX = 1'b1;
+            // StallIF = 1'b1;
+            // StallID = 1'b1;
+            // StallEX = 1'b1;
         end else if (ex_load_wait_hazard || ex_secure_load_wait_hazard) begin
             StallIF = 1'b1;
             StallID = 1'b1;
@@ -781,7 +770,6 @@ module hazard_unit #(
             //StallIF = 1'b1;
             //StallID = 1'b1;
         end
-
 
     end
 
