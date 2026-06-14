@@ -26,7 +26,7 @@ from ast_nodes import (
     VarDeclNode,
     WhileNode,
 )
-from symbol_table import DATA_BASE, MEMORY_SIZE, Scope, Symbol, SymbolTable, TypeInfo
+from symbol_table import DATA_BASE, MEMORY_SIZE, PROGRAM_RESULT_SYMBOL, Scope, Symbol, SymbolTable, TypeInfo
 
 
 WORD_SIZE = 4
@@ -730,13 +730,6 @@ class AssemblyGenerator:
             return set()
 
         param_names = {param.name for param in self.current_function.params}
-        array_like_params = {
-            param.name
-            for param in self.current_function.params
-            if (param_type := self._resolve_symbol(param.name)) is not None
-            and param_type.type_info is not None
-            and param_type.type_info.is_array
-        }
         homes: set[str] = set()
 
         def visit(current):
@@ -801,7 +794,7 @@ class AssemblyGenerator:
                     visit(stmt)
 
         visit(body)
-        return homes | array_like_params
+        return homes
 
     def _emit_load_symbol(self, symbol: Symbol, target_reg: str):
         """Carga el valor actual de un simbolo en un registro."""
@@ -935,13 +928,20 @@ class AssemblyGenerator:
                 if isinstance(decl, VarDeclNode):
                     self._emit_global_initializers(decl)
 
+            self._emit("mov", "p0", "zero", comment="resultado de programa por defecto")
             self._emit("call", LabelRef("main"), comment="entrada principal")
+            if PROGRAM_RESULT_SYMBOL in self.symbol_table.global_scope.symbols:
+                self._emit("la", "r0", AddressRef(PROGRAM_RESULT_SYMBOL), comment="celda de resultado del programa")
+                self._emit("stw", "p0", self._format_memory_operand(0, "r0"), comment="guardar resultado final")
             self._emit_label("__halt__")
             self._emit("jmp", LabelRef("__halt__"))
 
         for decl in program.declarations:
             if isinstance(decl, FunctionDeclNode):
                 self._emit_function(decl)
+
+        # end marca el cierre fisico y debe quedar despues de todo el codigo.
+        self._emit("end")
 
     def _emit_global_initializers(self, node: VarDeclNode):
         """Genera el codigo de inicializacion para globales con valor."""
@@ -1372,6 +1372,21 @@ class AssemblyGenerator:
                 return result_reg
 
             if symbol.segment == "param":
+                if symbol.type_info.is_array:
+                    if symbol.register is not None:
+                        self._emit_user("mov", result_reg, symbol.register)
+                        return result_reg
+                    shadow_offset = self._parameter_shadow_offset(symbol)
+                    if shadow_offset is not None:
+                        self._emit_user(
+                            self._type_load_op(symbol.type_info),
+                            result_reg,
+                            self._format_memory_operand(shadow_offset, "sp", symbol),
+                        )
+                        return result_reg
+                    self.error(node, "unsupported_array_parameter_address", f'no se pudo resolver la referencia de "{node.name}".')
+                    return result_reg
+
                 shadow_offset = self._parameter_shadow_offset(symbol)
                 if shadow_offset is not None:
                     self._ensure_parameter_home(symbol)
@@ -1918,8 +1933,40 @@ class AssemblyGenerator:
 
     # RENDER
 
+    def _remove_redundant_fallthrough_jumps(self):
+        """Elimina saltos a etiquetas que ya son la siguiente instruccion real."""
+
+        optimized: List[Union[Instruction, LabelMarker, str]] = []
+
+        for index, item in enumerate(self.items):
+            if (
+                isinstance(item, Instruction)
+                and (item.op == "jmp" or item.op in RELATIVE_BRANCH_OPS)
+                and item.args
+                and isinstance(item.args[-1], LabelRef)
+            ):
+                target = item.args[-1].name
+                for following in self.items[index + 1:]:
+                    if isinstance(following, LabelMarker):
+                        if following.name == target:
+                            break
+                        continue
+                    if isinstance(following, str):
+                        continue
+                    optimized.append(item)
+                    break
+                else:
+                    optimized.append(item)
+                continue
+
+            optimized.append(item)
+
+        self.items = optimized
+
     def _render_items(self) -> List[str]:
         """Resuelve labels, direcciones y pseudos para producir texto final."""
+
+        self._remove_redundant_fallthrough_jumps()
 
         last_signature = None
         item_sizes: List[int] = []

@@ -1,0 +1,34 @@
+bloques suma:
+suma_B0:
+  succ: suma_while_cond_1
+  t1 = 0
+  result = t1
+  t2 = 0
+  i = t2
+
+suma_while_cond_1:
+  pred: suma_B0, suma_B2
+  succ: suma_B2, suma_while_end_2
+  t3 = i <= a
+  if_false t3 goto suma_while_end_2
+
+suma_B2:
+  pred: suma_while_cond_1
+  succ: suma_while_cond_1
+  t4 = result + i
+  result = t4
+  t5 = 1
+  t6 = i + t5
+  i = t6
+  goto suma_while_cond_1
+
+suma_while_end_2:
+  pred: suma_while_cond_1
+  return result
+
+bloques main:
+main_B0:
+  t1 = 10
+  param t1
+  t2 = call suma, 1
+  return t2

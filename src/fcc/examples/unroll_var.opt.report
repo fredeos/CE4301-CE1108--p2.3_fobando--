@@ -1,0 +1,9 @@
+Reporte de optimizacion IR:
+  Nivel: O2
+  Loop unrolling parcial: factor=5
+  Renombramiento de temporales/estaticos: si
+  Renombramientos aplicados: 46
+  Loops desenrollados:
+    - main:main_for_cond_1 x5
+  Maximo factor detectado por loop:
+    - main:main_for_cond_1 max=5

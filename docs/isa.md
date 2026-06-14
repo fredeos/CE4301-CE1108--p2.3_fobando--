@@ -140,6 +140,7 @@
 |**J**| <code>jmp imm</code>  | $R[zero] \leftarrow PC$; $PC \leftarrow PC+imm$ | <code>jal zero, imm</code> |
 |**R**| <code>ret</code>  | $R[pc] \leftarrow R[ra]$ | <code>mov pc, ra</code> |
 |**R**| <code>nop</code>  | $R[zero] \leftarrow R[zero] + R[zero]$ | <code>add zero, zero, zero</code> |
+|**R**| <code>end</code>  | $R[zero] \leftarrow R[zero] + R[zero]$ | <code>add zero, zero, zero</code> |
 |**R**| <code>seqz rd, rn </code>  | $R[rd] \leftarrow (R[rn] == R[zero])$ | <code>seq rd, rn, zero</code> |
 |**I**| <code>la rd, addr</code> | $R[rd] \leftarrow addr$ | <code>movi rd, addr</code> |
 |**I**| <code>li rd, imm</code> | $R[rd], \leftarrow imm$ | <code>movi rd, imm</code> |
@@ -182,6 +183,11 @@
 | rn | 15-19 | dir. registro 2 |
 | rm | 20-24 | dir. registro 3 |
 | func7 | 25-31 | funcionalidad extra |
+
+| func7 | operacion |
+|-------|-----------|
+| 1111  | `end` |
+
 
 - **Tipo I**:
 

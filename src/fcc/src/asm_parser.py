@@ -6,8 +6,9 @@ import re
 from pathlib import Path
 from typing import List, Optional
 
-from asm_to_bin import Instruction
+from asm_to_bin import *
 from clases import INSTRUCTION_CLASSES, NORMAL_REGISTERS, SECURE_PRIMARY, SECURE_REGISTERS, SECURE_SECONDARY
+
 
 
 def parse_register(token: str, secure: bool = False) -> str:
@@ -195,3 +196,30 @@ def parse_assembly_file(filepath: str | Path) -> List[Instruction]:
     """Parsea un archivo de ensamblador desde disco."""
 
     return parse_assembly_text(Path(filepath).read_text(encoding="utf-8"))
+
+# --- USO ---
+if __name__ == "__main__":
+    instrucciones = parse_assembly_file(".\\prueba.asm")
+    for i, instr in enumerate(instrucciones):
+        print(f"[{i}] {instr}")
+
+    encoded_instructions = [inst.encode() for inst in instrucciones]
+
+    # PASO B: Persistencia de archivos
+    # Generamos la salida para el simulador y el binario para el hardware real.
+    F32IS_Writer.save_bin("with_parser.bin", encoded_instructions)
+    F32IS_Writer.save_hex("with_parser.hex", encoded_instructions)
+
+    # PASO C: Reporte de depuración en consola
+    # Este reporte ayuda a verificar que los saltos de PC (de 4 en 4) y los HEX sean correctos.
+    print(f"\n{'#' * 15} F32IS SECURE SESSION REPORT {'#' * 15}")
+    print(f"{'PC ADDR':<8} | {'HEX CONTENT':<13} | {'ASM MNEMONIC'}")
+    print("-" * 45)
+
+    for i, bin_str in enumerate(encoded_instructions):
+        hex_val = f"{int(bin_str, 2):08X}"
+        # Mostramos la operación original del objeto para comparar
+        original_op = instrucciones[i].op
+        print(f"0x{i * 4:02X}     | {hex_val}    | {original_op}")
+
+    print(f"\n{'#' * 18} ASSEMBLY COMPLETE {'#' * 18}")
