@@ -50,6 +50,7 @@ class DeadCodeEliminator:
 
         total_result = DeadCodeResult()
         block_builder = BasicBlockBuilder()
+        observable_globals = set(current_program.globals)
         changed = True
 
         while changed:
@@ -67,7 +68,11 @@ class DeadCodeEliminator:
                 liveness = liveness_results[function_name]
 
                 for basic_block in function_blocks.blocks:
-                    removed = self.eliminate_block_dead_code(basic_block, liveness.out_sets[basic_block.name])
+                    removed = self.eliminate_block_dead_code(
+                        basic_block,
+                        liveness.out_sets[basic_block.name],
+                        observable_globals,
+                    )
 
                     if removed:
                         # si se elimina algo que vuelva a revisar para ver si se puede eliminar algo mas
@@ -91,7 +96,12 @@ class DeadCodeEliminator:
 
         return current_program, total_result
 
-    def eliminate_block_dead_code(self, basic_block: BasicBlock, out_set: set[str]) -> List[IRInstruction]:
+    def eliminate_block_dead_code(
+        self,
+        basic_block: BasicBlock,
+        out_set: set[str],
+        observable_globals: set[str],
+    ) -> List[IRInstruction]:
         """
         Elimina instrucciones muertas dentro de un bloque básico.
         Se recorre de abajo hacia arriba porque el liveness es un análisis hacia atrás.
@@ -104,7 +114,7 @@ class DeadCodeEliminator:
         for instr in reversed(basic_block.instructions):
             defined = instr.defined_name()
 
-            if self.is_dead_instruction(instr, defined, live):
+            if self.is_dead_instruction(instr, defined, live, observable_globals):
                 removed_instructions.append(instr)
                 continue
 
@@ -121,7 +131,13 @@ class DeadCodeEliminator:
 
         return removed_instructions
 
-    def is_dead_instruction(self, instr: IRInstruction, defined: str | None, live: set[str]) -> bool:
+    def is_dead_instruction(
+        self,
+        instr: IRInstruction,
+        defined: str | None,
+        live: set[str],
+        observable_globals: set[str],
+    ) -> bool:
         """
         Una instrucción es ccdigo muerto si:
         - define una variable,
@@ -131,6 +147,10 @@ class DeadCodeEliminator:
 
         if defined is None:
             # si no define nada, no se borra (return, goto, label, ...)
+            return False
+
+        if defined in observable_globals:
+            # Una escritura global es visible desde memoria y no se elimina.
             return False
 
         if defined in live:

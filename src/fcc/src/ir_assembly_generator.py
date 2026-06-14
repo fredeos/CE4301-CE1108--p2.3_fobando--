@@ -16,7 +16,7 @@ from assembly_generator import (
     WORD_SIZE,
 )
 from ir_nodes import IRFunction, IRInstruction, IRProgram
-from symbol_table import PROGRAM_RESULT_SYMBOL, Scope, Symbol, SymbolTable, TypeInfo
+from symbol_table import PARAM_REGISTER_LIMIT, PROGRAM_RESULT_SYMBOL, Scope, Symbol, SymbolTable, TypeInfo
 
 
 class IRAssemblyGenerator(AssemblyGenerator):
@@ -33,6 +33,8 @@ class IRAssemblyGenerator(AssemblyGenerator):
         self.function_ast_by_name: Dict[str, FunctionDeclNode] = {}
         self.ir_symbol_map: Dict[str, Symbol] = {}
         self.ir_virtual_offsets: Dict[str, int] = {}
+        self.ir_virtual_types: Dict[str, TypeInfo] = {}
+        self.ir_param_stride_registers: Dict[str, str] = {}
         self.ir_pending_params: List[str] = []
         self.ir_slot_size = 0
         self.ir_current_total_frame = 0
@@ -92,15 +94,17 @@ class IRAssemblyGenerator(AssemblyGenerator):
 
             self._emit("mov", "p0", "zero", comment="resultado de programa por defecto")
             self._emit("call", LabelRef("main"), comment="entrada principal")
-            if PROGRAM_RESULT_SYMBOL in self.symbol_table.global_scope.symbols:
-                self._emit("la", "r0", AddressRef(PROGRAM_RESULT_SYMBOL), comment="celda de resultado del programa")
-                self._emit("stw", "p0", self._format_memory_operand(0, "r0"), comment="guardar resultado final")
-            self._emit_label("__halt__")
-            self._emit("jmp", LabelRef("__halt__"))
+            self._emit("end", comment="fin real del programa tras retornar de main")
+            self._emit_label("__end_fallback__")
+            self._emit("jmp", LabelRef("__end_fallback__"), comment="respaldo si end se interpreta como nop")
 
         for function in ir_program.functions:
             # Se emiten todas las funciones despues del punto de entrada.
             self._emit_ir_function(function)
+
+        if not self.emit_entrypoint:
+            # Sin __init__, end queda al final fisico del stream generado.
+            self._emit("end")
 
     def _emit_ir_function(self, function: IRFunction):
         """Entradas: funcion IR. Salida: prologo, cuerpo y epilogo. Uso: _emit_ir_program."""
@@ -136,6 +140,7 @@ class IRAssemblyGenerator(AssemblyGenerator):
         previous_secure = self.current_function_secure
         previous_secure_exit_label = self.current_secure_exit_label
         previous_homed_params = self.current_homed_params
+        previous_param_stride_registers = self.ir_param_stride_registers
 
         self.current_function = function_ast
         self.current_function_symbol = function_symbol
@@ -145,14 +150,17 @@ class IRAssemblyGenerator(AssemblyGenerator):
         self.current_call_spill_max = 0
         self.current_homed_params = set()
         self.ir_pending_params = []
+        self.ir_virtual_types = {}
         self._reset_temp_pool()
 
         self.current_local_size = function_symbol.extra.get("local_size", 0)
         self.ir_symbol_map = self._collect_function_symbols(function.name)
+        self.ir_param_stride_registers = self._assign_dynamic_stride_registers(function_ast)
         homed_params = self._collect_ir_parameter_homes(function)
         # El allocator materializa cada temporal/version IR en un slot estable.
         self.ir_virtual_offsets = self._allocate_ir_slots(function)
         self.ir_slot_size = len(self.ir_virtual_offsets) * WORD_SIZE
+        # Parametros con direccion tomada necesitan copia en stack.
         self.current_param_shadow_offsets = {
             param.name: self.current_saved_area + self.current_local_size + self.ir_slot_size + (index * WORD_SIZE)
             for index, param in enumerate(function_ast.params)
@@ -176,6 +184,7 @@ class IRAssemblyGenerator(AssemblyGenerator):
                 return
             if return_type is not None and not return_type.is_void:
                 self._emit("mov", "p0", "zero")
+            # login valida entrada a funcion segura antes de ejecutar su cuerpo.
             self._emit("login", function_ast.secure.value)
             self._emit("beqz", "lr", LabelRef(self.current_secure_exit_label))
 
@@ -199,6 +208,8 @@ class IRAssemblyGenerator(AssemblyGenerator):
         self.current_param_shadow_offsets = {}
         self.ir_symbol_map = {}
         self.ir_virtual_offsets = {}
+        self.ir_virtual_types = {}
+        self.ir_param_stride_registers = previous_param_stride_registers
         self.ir_pending_params = []
         self.current_function = previous_function
         self.current_function_symbol = previous_function_symbol
@@ -222,27 +233,33 @@ class IRAssemblyGenerator(AssemblyGenerator):
             # Constante TAC -> inmediato en registro -> destino IR.
             self._emit_load_immediate_user(result, self._parse_ir_const(instruction))
             self._store_ir_value(instruction.dest, result, instruction)
+            self._remember_ir_type(instruction.dest, TypeInfo("int"))
             self._free_temp(result)
             return
         if op == "assign" and instruction.dest and instruction.args:
             value = self._load_ir_value(instruction.args[0], instruction)
             self._store_ir_value(instruction.dest, value, instruction)
+            self._remember_ir_type(instruction.dest, self._ir_value_type(instruction.args[0]))
             self._free_temp(value)
             return
         if op == "binop" and instruction.dest and len(instruction.args) >= 2:
             # Operaciones binarias devuelven un registro temporal materializado.
             result = self._emit_ir_binop(instruction)
             self._store_ir_value(instruction.dest, result, instruction)
+            self._remember_ir_type(instruction.dest, TypeInfo("int"))
             self._free_temp(result)
             return
         if op == "unop" and instruction.dest and instruction.args:
             result = self._emit_ir_unop(instruction)
             self._store_ir_value(instruction.dest, result, instruction)
+            self._remember_ir_type(instruction.dest, self._ir_value_type(instruction.args[0]) or TypeInfo("int"))
             self._free_temp(result)
             return
         if op == "addr" and instruction.dest and instruction.args:
             result = self._address_ir_name(instruction.args[0], instruction)
             self._store_ir_value(instruction.dest, result, instruction)
+            base_type = self._ir_value_type(instruction.args[0]) or TypeInfo("int")
+            self._remember_ir_type(instruction.dest, TypeInfo(base_type.name, is_pointer=True, vault_inner=base_type.vault_inner))
             self._free_temp(result)
             return
         if op == "deref" and instruction.dest and instruction.args:
@@ -255,11 +272,19 @@ class IRAssemblyGenerator(AssemblyGenerator):
             self._free_temp(pointer)
             return
         if op == "load_index" and instruction.dest and len(instruction.args) >= 2:
+            element_type = self._indexed_element_type(instruction.args[0])
             addr = self._indexed_ir_address(instruction.args[0], instruction.args[1], instruction)
-            result = self._alloc_temp(instruction)
-            self._emit_user("ldw", result, self._format_memory_operand(0, addr, instruction))
-            self._store_ir_value(instruction.dest, result, instruction)
-            self._free_temp(result)
+            if element_type is not None and element_type.is_array:
+                # A[i] en una matriz produce la direccion de la fila, no una carga escalar.
+                self._store_ir_value(instruction.dest, addr, instruction)
+                self._remember_ir_type(instruction.dest, element_type)
+            else:
+                result = self._alloc_temp(instruction)
+                load_type = element_type or TypeInfo("int")
+                self._emit_user(self._type_load_op(load_type), result, self._format_memory_operand(0, addr, instruction))
+                self._store_ir_value(instruction.dest, result, instruction)
+                self._remember_ir_type(instruction.dest, load_type)
+                self._free_temp(result)
             self._free_temp(addr)
             return
         if op == "store_index" and len(instruction.args) >= 3:
@@ -282,6 +307,7 @@ class IRAssemblyGenerator(AssemblyGenerator):
             self.ir_pending_params.append(instruction.args[0])
             return
         if op == "call":
+            # La instruccion call consume los param acumulados inmediatamente antes.
             self._emit_ir_call(instruction)
             return
         if op == "goto" and instruction.target:
@@ -365,15 +391,28 @@ class IRAssemblyGenerator(AssemblyGenerator):
     def _emit_ir_call(self, instruction: IRInstruction):
         """Entradas: call TAC. Salida: argumentos, call y retorno opcional. Uso: _emit_ir_instruction."""
         args = instruction.args if instruction.args else self.ir_pending_params
-        for index, arg in enumerate(args):
-            # Convencion de llamada: argumentos en p0, p1, ...
-            reg = self._load_ir_value(arg, instruction)
-            self._emit_user("mov", f"p{index}", reg)
-            self._free_temp(reg)
-
         if not instruction.extra:
             self.error(instruction, "missing_ir_callee", "llamada IR sin nombre de funcion.")
             return
+
+        call_regs: List[str] = []
+        for arg in args:
+            # Se calculan primero para no pisar parametros vivos en p0, p1, etc.
+            call_regs.append(self._load_ir_argument(arg, instruction))
+
+        hidden_stride_regs = self._load_hidden_stride_arguments(instruction.extra, args, instruction)
+        call_regs.extend(hidden_stride_regs)
+
+        if len(call_regs) > PARAM_REGISTER_LIMIT:
+            self.error(instruction, "too_many_call_arguments", "la llamada excede los registros de parametros disponibles.")
+            for reg in call_regs:
+                self._free_temp(reg)
+            return
+
+        for index, reg in enumerate(call_regs):
+            # Convencion de llamada: argumentos visibles y ocultos en p0, p1, ...
+            self._emit_user("mov", f"p{index}", reg)
+            self._free_temp(reg)
 
         self._emit_user("call", LabelRef(instruction.extra))
         self.ir_pending_params = []
@@ -381,12 +420,59 @@ class IRAssemblyGenerator(AssemblyGenerator):
         callee_symbol = self.symbol_table.global_scope.symbols.get(instruction.extra)
         returns_value = callee_symbol is None or callee_symbol.return_type is None or not callee_symbol.return_type.is_void
         if instruction.dest and returns_value:
+            # El resultado de llamada solo se guarda si la funcion retorna valor.
             result = self._alloc_temp(instruction)
             # Tras call se lee p0 y se guarda en el destino TAC.
             self._emit("nop", comment="espera retorno de call antes de leer p0")
             self._emit_user("mov", result, "p0")
             self._store_ir_value(instruction.dest, result, instruction)
+            self._remember_ir_type(instruction.dest, callee_symbol.return_type if callee_symbol else TypeInfo("int"))
             self._free_temp(result)
+
+    def _load_ir_argument(self, name: str, context) -> str:
+        """Entradas: argumento IR. Salida: valor o direccion base. Uso: llamadas."""
+        symbol = self._resolve_ir_symbol(name)
+        if symbol is not None and symbol.type_info is not None and symbol.type_info.is_array:
+            # Los arreglos se pasan por referencia, no por su primer elemento.
+            return self._address_ir_name(name, context)
+        return self._load_ir_value(name, context)
+
+    def _load_hidden_stride_arguments(self, callee_name: str, args: List[str], context) -> List[str]:
+        """Entradas: callee y args. Salida: strides ocultos. Uso: llamadas a matrices."""
+        callee_ast = self.function_ast_by_name.get(callee_name)
+        if callee_ast is None:
+            return []
+
+        hidden: List[str] = []
+        callee_scope = self.scope_by_name.get(f"function:{callee_name}")
+        if callee_scope is None:
+            return hidden
+
+        for param, arg in zip(callee_ast.params, args):
+            param_symbol = callee_scope.symbols.get(param.name)
+            if param_symbol is None or not self._needs_dynamic_row_stride(param_symbol.type_info):
+                continue
+            hidden.append(self._load_ir_row_stride(arg, context))
+        return hidden
+
+    def _load_ir_row_stride(self, name: str, context) -> str:
+        """Entradas: arreglo argumento. Salida: bytes por fila. Uso: int[][] dinamico."""
+        result = self._alloc_temp(context)
+        value_type = self._ir_value_type(name)
+        static_stride = self._static_row_stride(value_type)
+        if static_stride is not None:
+            self._emit_load_immediate_user(result, static_stride)
+            return result
+
+        symbol = self._resolve_ir_symbol(name)
+        if symbol is not None and symbol.name in self.ir_param_stride_registers:
+            # Propaga el stride recibido cuando se pasa una matriz parametro a otra funcion.
+            self._emit_user("mov", result, self.ir_param_stride_registers[symbol.name])
+            return result
+
+        self.error(context, "missing_matrix_stride", f'no se pudo determinar el stride de filas para "{name}".')
+        self._emit_user("mov", result, "zero")
+        return result
 
     def _load_ir_value(self, name: str, context) -> str:
         """Entradas: nombre IR/simbolo. Salida: registro cargado. Uso: TAC que lee valores."""
@@ -394,6 +480,12 @@ class IRAssemblyGenerator(AssemblyGenerator):
         symbol = self._resolve_ir_symbol(name)
         if symbol is not None:
             # Simbolo real: global, local, parametro o builtin.
+            if symbol.type_info is not None and symbol.type_info.is_array:
+                if symbol.segment == "param" or self._is_array_reference_symbol(symbol):
+                    self._emit_load_symbol(symbol, result)
+                    return result
+                self._free_temp(result)
+                return self._address_ir_name(name, context)
             self._emit_load_symbol(symbol, result)
             return result
 
@@ -443,11 +535,20 @@ class IRAssemblyGenerator(AssemblyGenerator):
             self._emit_load_immediate_user(result, symbol.address or 0)
             return result
         if symbol.segment == "stack":
+            if self._is_array_reference_symbol(symbol):
+                # Referencias int[][] locales guardan una direccion en su slot.
+                self._emit_user(
+                    "ldw",
+                    result,
+                    self._format_memory_operand(self._local_slot_offset(symbol), "sp", context),
+                )
+                return result
             # Locales reales usan su offset asignado por semantica.
             self._emit_add_immediate_user(result, "sp", self._local_slot_offset(symbol))
             return result
         if symbol.segment == "param":
             if symbol.type_info is not None and symbol.type_info.is_array and symbol.register is not None:
+                # Arreglos parametro ya llegan como direccion base.
                 self._emit_user("mov", result, symbol.register)
                 return result
             shadow_offset = self._parameter_shadow_offset(symbol)
@@ -472,21 +573,96 @@ class IRAssemblyGenerator(AssemblyGenerator):
             return base_reg
 
         symbol = self._resolve_ir_symbol(base_name)
+        base_type = self._ir_value_type(base_name)
         if symbol is not None and symbol.type_info is not None and symbol.type_info.is_array:
+            # Arreglo local/global: se toma direccion base real.
             base_reg = self._address_ir_name(base_name, context)
             element_type = symbol.type_info.element_type()
-        else:
+        elif base_type is not None and base_type.is_array:
+            # Subarreglo virtual: su valor ya es direccion base de la fila.
             base_reg = self._load_ir_value(base_name, context)
-            element_type = symbol.type_info.element_type() if symbol and symbol.type_info else TypeInfo("int")
+            element_type = base_type.element_type()
+        else:
+            # Puntero/temporal: su valor ya representa una direccion.
+            base_reg = self._load_ir_value(base_name, context)
+            element_type = base_type.element_type() if base_type is not None else TypeInfo("int")
 
         index_reg = self._load_ir_value(index_name, context)
-        element_size = self._type_size(element_type)
-        if element_size != 1:
-            # Arreglos normales indexan elementos, no bytes.
-            self._emit_user("muli", index_reg, index_reg, str(element_size))
+        stride_reg = self._dynamic_row_stride_register(base_name, context)
+        if stride_reg is not None:
+            # En int[][] el ancho de fila llega oculto con la llamada.
+            self._emit_user("mul", index_reg, index_reg, stride_reg)
+            self._free_temp(stride_reg)
+        else:
+            element_size = self._type_size(element_type)
+            if element_size != 1:
+                # Arreglos normales indexan elementos, no bytes.
+                self._emit_user("muli", index_reg, index_reg, str(element_size))
         self._emit_user("add", base_reg, base_reg, index_reg)
         self._free_temp(index_reg)
         return base_reg
+
+    def _dynamic_row_stride_register(self, base_name: str, context) -> Optional[str]:
+        """Entradas: base indexada. Salida: registro stride o None. Uso: int[][]."""
+        symbol = self._resolve_ir_symbol(base_name)
+        if symbol is None or not self._needs_dynamic_row_stride(symbol.type_info):
+            return None
+        stride_register = self.ir_param_stride_registers.get(symbol.name)
+        if stride_register is None:
+            self.error(context, "missing_matrix_stride", f'no se encontro stride oculto para "{base_name}".')
+            return None
+        result = self._alloc_temp(context)
+        self._emit_user("mov", result, stride_register)
+        return result
+
+    def _ir_value_type(self, name: str) -> Optional[TypeInfo]:
+        """Entradas: nombre IR/simbolo. Salida: tipo conocido o None. Uso: matrices."""
+        symbol = self._resolve_ir_symbol(name)
+        if symbol is not None:
+            return symbol.type_info
+        return self.ir_virtual_types.get(name)
+
+    def _indexed_element_type(self, base_name: str) -> Optional[TypeInfo]:
+        """Entradas: base indexada. Salida: tipo del elemento. Uso: load_index."""
+        base_type = self._ir_value_type(base_name)
+        if base_type is None:
+            return None
+        if base_type.is_array or base_type.is_pointer:
+            return base_type.element_type()
+        return TypeInfo(base_type.name, vault_inner=base_type.vault_inner)
+
+    def _remember_ir_type(self, name: str | None, type_info: Optional[TypeInfo]) -> None:
+        """Entradas: destino y tipo. Salida: cache actualizada. Uso: temporales."""
+        if name and type_info is not None and self._resolve_ir_symbol(name) is None:
+            self.ir_virtual_types[name] = type_info
+
+    def _assign_dynamic_stride_registers(self, function_ast: FunctionDeclNode) -> Dict[str, str]:
+        """Entradas: firma. Salida: parametro->registro stride. Uso: int[][]."""
+        registers: Dict[str, str] = {}
+        next_index = len(function_ast.params)
+        for param in function_ast.params:
+            symbol = self.ir_symbol_map.get(param.name)
+            if symbol is None or not self._needs_dynamic_row_stride(symbol.type_info):
+                continue
+            if next_index >= PARAM_REGISTER_LIMIT:
+                self.error(param, "too_many_matrix_parameters", "no hay registros suficientes para strides ocultos.")
+                continue
+            registers[param.name] = f"p{next_index}"
+            next_index += 1
+        return registers
+
+    def _needs_dynamic_row_stride(self, type_info: Optional[TypeInfo]) -> bool:
+        """Entradas: tipo. Salida: True si int[][] necesita stride oculto. Uso: matrices."""
+        return bool(type_info and type_info.is_array and len(type_info.array_dims) > 1 and type_info.array_dims[1] <= 0)
+
+    def _static_row_stride(self, type_info: Optional[TypeInfo]) -> Optional[int]:
+        """Entradas: tipo matriz. Salida: bytes por fila si se conoce. Uso: llamadas."""
+        if type_info is None or not type_info.is_array or len(type_info.array_dims) <= 1:
+            return None
+        row_type = type_info.element_type()
+        if row_type.has_unknown_size:
+            return None
+        return self._type_size(row_type)
 
     def _resolve_ir_symbol(self, name: str) -> Optional[Symbol]:
         """Entradas: nombre. Salida: simbolo real o None. Uso: cargas, stores y direcciones."""
@@ -521,6 +697,7 @@ class IRAssemblyGenerator(AssemblyGenerator):
         homes: Set[str] = set()
         for instruction in function.instructions:
             if instruction.op == "addr" and instruction.args and instruction.args[0] in params:
+                # &param obliga a darle direccion estable dentro del frame.
                 homes.add(instruction.args[0])
         return homes
 
@@ -568,5 +745,6 @@ class IRAssemblyGenerator(AssemblyGenerator):
         try:
             return int(raw, 0)
         except ValueError:
+            # El backend solo materializa constantes enteras/bool/char.
             self.error(instruction, "unsupported_ir_const", f'la constante IR "{raw}" no se puede materializar.')
             return 0

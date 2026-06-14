@@ -553,6 +553,9 @@ class AssemblyGenerator:
 
         if type_info.is_pointer:
             return WORD_SIZE
+        if type_info.is_array:
+            # Al indexar una matriz, cada fila ocupa el tamano total del subarreglo.
+            return max(type_info.total_size(), WORD_SIZE)
         if type_info.name == "char":
             return 1
         return WORD_SIZE
@@ -722,6 +725,16 @@ class AssemblyGenerator:
             self._format_memory_operand(shadow_offset, "sp", symbol),
         )
         self.current_homed_params.add(symbol.name)
+
+    def _is_array_reference_symbol(self, symbol: Symbol) -> bool:
+        """Indica si un simbolo de arreglo guarda una direccion, no datos propios."""
+
+        return bool(
+            symbol.type_info is not None
+            and symbol.type_info.is_array
+            and symbol.segment == "stack"
+            and (symbol.type_info.has_unknown_size or symbol.extra.get("array_reference"))
+        )
 
     def _collect_parameter_homes(self, body: BlockNode) -> set[str]:
         """Detecta parametros que deben copiarse a stack por uso de direccion."""
@@ -930,15 +943,17 @@ class AssemblyGenerator:
 
             self._emit("mov", "p0", "zero", comment="resultado de programa por defecto")
             self._emit("call", LabelRef("main"), comment="entrada principal")
-            if PROGRAM_RESULT_SYMBOL in self.symbol_table.global_scope.symbols:
-                self._emit("la", "r0", AddressRef(PROGRAM_RESULT_SYMBOL), comment="celda de resultado del programa")
-                self._emit("stw", "p0", self._format_memory_operand(0, "r0"), comment="guardar resultado final")
-            self._emit_label("__halt__")
-            self._emit("jmp", LabelRef("__halt__"))
+            self._emit("end", comment="fin real del programa tras retornar de main")
+            self._emit_label("__end_fallback__")
+            self._emit("jmp", LabelRef("__end_fallback__"), comment="respaldo si end se interpreta como nop")
 
         for decl in program.declarations:
             if isinstance(decl, FunctionDeclNode):
                 self._emit_function(decl)
+
+        if not self.emit_entrypoint:
+            # Sin __init__, end queda al final fisico del stream generado.
+            self._emit("end")
 
     def _emit_global_initializers(self, node: VarDeclNode):
         """Genera el codigo de inicializacion para globales con valor."""
@@ -972,11 +987,23 @@ class AssemblyGenerator:
         if self.current_function_secure:
             self._emit("quit")
 
+        self._emit_program_result_store_if_main(node)
+
         for index, register in reversed(list(enumerate(SAVE_REGS))):
             self._emit("ldw", register, self._format_memory_operand(index * WORD_SIZE, "sp", node))
 
         self._emit_sp_adjust(-total_frame)
         self._emit("ret")
+
+    def _emit_program_result_store_if_main(self, node: FunctionDeclNode):
+        """Guarda p0 en la celda de resultado cuando retorna main."""
+
+        if not self.emit_entrypoint or node.name != "main":
+            return
+        if PROGRAM_RESULT_SYMBOL not in self.symbol_table.global_scope.symbols:
+            return
+        self._emit("la", "r0", AddressRef(PROGRAM_RESULT_SYMBOL), comment="celda de resultado del programa")
+        self._emit("stw", "p0", self._format_memory_operand(0, "r0", node), comment="guardar resultado final")
 
     def _emit_function(self, node: FunctionDeclNode):
         """Genera el ensamblador completo de una funcion."""
@@ -1365,6 +1392,13 @@ class AssemblyGenerator:
                 return result_reg
 
             if symbol.segment == "stack":
+                if self._is_array_reference_symbol(symbol):
+                    self._emit_user(
+                        "ldw",
+                        result_reg,
+                        self._format_memory_operand(self._local_slot_offset(symbol), "sp", symbol),
+                    )
+                    return result_reg
                 self._emit_add_immediate_user(result_reg, "sp", self._local_slot_offset(symbol))
                 return result_reg
 

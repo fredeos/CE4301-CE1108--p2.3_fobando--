@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 from pprint import pprint
 import sys
+import time
 from textwrap import dedent
 
 PROJECT_ROOT = Path(__file__).resolve().parent
@@ -12,6 +13,7 @@ SRC_PATH = PROJECT_ROOT / "src"
 if str(SRC_PATH) not in sys.path:
     sys.path.insert(0, str(SRC_PATH))
 from assembly_generator import AssemblyGenerator
+from assembly_post_optimizer import optimize_o1_assembly, optimize_o4_assembly
 from ast_json import derive_ast_json_output_path, write_ast_json
 from asm_parser import parse_assembly_text
 from asm_to_bin import (
@@ -20,9 +22,10 @@ from asm_to_bin import (
     build_program_header,
     encode_instruction_stream,
 )
+from compile_metrics import build_compile_metrics, write_compile_metrics
 from import_resolver import ImportResolutionError, resolve_program_ast
 from ir_assembly_generator import IRAssemblyGenerator
-from ir_driver import build_ir, format_basic_blocks, format_ir, optimize_ir
+from ir_driver import build_ir, format_basic_blocks, format_cfg_dot, format_cfg_json, format_ir, optimize_ir
 from semantic_analyzer import SemanticAnalyzer
 from semantic_driver import (
     format_semantic_error,
@@ -37,6 +40,10 @@ def format_codegen_error(diagnostic) -> str:
 
 def format_binary_error(error: Exception) -> str:
     return f"Error [binario]: {error}"
+
+
+def format_metrics_error(error: Exception) -> str:
+    return f"Error [metricas]: {error}"
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
@@ -61,6 +68,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
               fcc main.f --emit-ir-files -O2 --unroll-factor 3
               fcc main.f --ir-backend -O1 -s
               fcc main.f --optimized-ir -O3
+              fcc main.f --optimized-ir -O4
             """
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -154,8 +162,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
         metavar="<0|1|2|3|4>",
         help=(
             "Nivel de optimizacion: O0 sin cambios; O1 renombra temporales/estaticos y baja por ASM desde TAC; "
-            "O2 agrega loop unrolling parcial con factor configurable."
-            "O3 realiza eliminación de código muerto usando analisis de variables vivas;"
+            "O2 aplica solo loop unrolling parcial con factor configurable; "
+            "O3 realiza eliminacion de codigo muerto usando analisis de variables vivas; "
             "O4 aplica reordenamiento seguro de instrucciones dentro de bloques basicos."
         ),
     )
@@ -191,7 +199,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--emit-ir-files",
         action="store_true",
-        help="Escribe archivos .ir, .blocks, .opt.ir, .opt.blocks y .opt.report junto al fuente.",
+        help="Escribe .ir, .blocks, .cfg.json, .cfg.dot, .opt.ir, .opt.blocks, .opt.cfg.json, .opt.cfg.dot y .opt.report.",
     )
     parser.add_argument(
         "--ir-backend",
@@ -202,6 +210,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 
 def derive_binary_output_path(input_path: Path, explicit_output: str | None, compile_only: bool = False) -> Path:
+    # -o manda; si no existe, se deriva desde el fuente.
     if explicit_output:
         return Path(explicit_output)
     return input_path.with_suffix(".obj" if compile_only else ".bin")
@@ -223,13 +232,51 @@ def derive_ir_output_paths(input_path: Path) -> dict[str, Path]:
     return {
         "ir": input_path.with_suffix(".ir"),
         "blocks": input_path.with_suffix(".blocks"),
+        "cfg_json": input_path.with_suffix(".cfg.json"),
+        "cfg_dot": input_path.with_suffix(".cfg.dot"),
         "optimized_ir": input_path.with_suffix(".opt.ir"),
         "optimized_blocks": input_path.with_suffix(".opt.blocks"),
+        "optimized_cfg_json": input_path.with_suffix(".opt.cfg.json"),
+        "optimized_cfg_dot": input_path.with_suffix(".opt.cfg.dot"),
         "report": input_path.with_suffix(".opt.report"),
     }
 
 
+def write_text_if_changed(path: Path, content: str) -> bool:
+    # Evita tocar fecha/contenido si el artefacto ya esta actualizado.
+    if path.exists() and path.read_text(encoding="utf-8") == content:
+        return False
+    path.write_text(content, encoding="utf-8")
+    return True
+
+
+def write_base_ir_artifacts(input_path: Path, ir_program) -> dict[str, bool]:
+    # .ir/.blocks/.cfg.json siempre representan la IR base, antes de optimizar.
+    paths = derive_ir_output_paths(input_path)
+    return {
+        "ir": write_text_if_changed(paths["ir"], format_ir(ir_program) + "\n"),
+        "blocks": write_text_if_changed(paths["blocks"], format_basic_blocks(ir_program) + "\n"),
+        "cfg_json": write_text_if_changed(paths["cfg_json"], format_cfg_json(ir_program) + "\n"),
+        "cfg_dot": write_text_if_changed(paths["cfg_dot"], format_cfg_dot(ir_program) + "\n"),
+    }
+
+
+def write_optimized_ir_artifacts(input_path: Path, optimized_program, report=None) -> dict[str, bool]:
+    # .opt.* representa la IR seleccionada por el nivel -O.
+    paths = derive_ir_output_paths(input_path)
+    changed = {
+        "optimized_ir": write_text_if_changed(paths["optimized_ir"], format_ir(optimized_program) + "\n"),
+        "optimized_blocks": write_text_if_changed(paths["optimized_blocks"], format_basic_blocks(optimized_program) + "\n"),
+        "optimized_cfg_json": write_text_if_changed(paths["optimized_cfg_json"], format_cfg_json(optimized_program) + "\n"),
+        "optimized_cfg_dot": write_text_if_changed(paths["optimized_cfg_dot"], format_cfg_dot(optimized_program) + "\n"),
+    }
+    if report is not None:
+        changed["report"] = write_text_if_changed(paths["report"], report.text() + "\n")
+    return changed
+
+
 def resolve_source_path(raw_path: str) -> Path:
+    # Acepta rutas completas, nombres sin .f y ejemplos dentro de src/fcc/examples.
     source_path = Path(raw_path)
     candidate_names = [source_path]
     if not source_path.suffix:
@@ -240,11 +287,13 @@ def resolve_source_path(raw_path: str) -> Path:
         for candidate_name in candidate_names:
             candidate = candidate_name if candidate_name.is_absolute() else root / candidate_name
             if candidate.exists() and candidate.is_file():
+                # Se devuelve absoluta para que los artefactos queden junto al fuente real.
                 return candidate.resolve()
     return source_path
 
 
 def normalize_opt_level(raw_level: str) -> str:
+    # Permite recibir 0, O0, -O0, etc. argparse deja solo el valor.
     normalized = str(raw_level).upper()
     if normalized.startswith("O"):
         normalized = normalized[1:]
@@ -255,10 +304,11 @@ def build_optimization_options(args) -> dict[str, object]:
     opt_level = normalize_opt_level(args.opt_level)
     opt_number = int(opt_level[1:])
 
-    # O0 queda limpio; cada nivel superior prende pases por defecto.
+    # O1 prende renombramiento por defecto; los demas niveles no lo mezclan.
     rename_statics = args.rename_statics if args.rename_statics is not None else opt_number == 1
 
     if args.unroll_factor is not None:
+        # O2 no tiene factor implicito: debe venir por consola.
         unroll_factor = args.unroll_factor
     else:
         unroll_factor = 1
@@ -267,6 +317,7 @@ def build_optimization_options(args) -> dict[str, object]:
         "opt_level": opt_level,
         "opt_number": opt_number,
         "unroll_factor_was_set": args.unroll_factor is not None,
+        "rename_statics_was_set": args.rename_statics is not None,
         "rename_statics": rename_statics,
         "unroll_factor": unroll_factor,
         "heuristic": not args.no_unroll_heuristic,
@@ -277,8 +328,14 @@ def validate_optimization_options(options: dict[str, object]) -> str | None:
     opt_number = int(options["opt_number"])
     unroll_factor = int(options["unroll_factor"])
     unroll_factor_was_set = bool(options["unroll_factor_was_set"])
+    rename_statics_was_set = bool(options["rename_statics_was_set"])
+
+    if opt_number != 1 and rename_statics_was_set:
+        # Evita mezclar pases: O1 es el unico nivel de renombramiento.
+        return "Error: --rename-statics/--no-rename-statics solo se usa con -O1."
 
     if opt_number == 2 and not unroll_factor_was_set:
+        # El usuario debe elegir factor para poder validarlo contra dependencias.
         return (
             "Error: -O2 requiere --unroll-factor <n>. "
             "No hay factor por defecto; el compilador lo validara contra los loops del programa."
@@ -293,6 +350,7 @@ def validate_optimization_options(options: dict[str, object]) -> str | None:
 
 
 def optimization_enabled(options: dict[str, object]) -> bool:
+    # Esta funcion solo decide si hay transformaciones, no si se usa IR.
     return (
             bool(options["rename_statics"])
             or int(options["unroll_factor"]) > 1
@@ -301,8 +359,14 @@ def optimization_enabled(options: dict[str, object]) -> bool:
     )
 
 
+def should_use_ir_backend(args, options: dict[str, object]) -> bool:
+    # Todos los niveles -O se bajan desde IR; O0 solo evita transformaciones.
+    return True
+
+
 def optimize_ir_or_exit(ir_program, options: dict[str, object]):
     try:
+        # Punto unico donde consola/IDE convierten opciones en pases IR.
         return optimize_ir(
             ir_program,
             unroll_factor=int(options["unroll_factor"]),
@@ -312,6 +376,17 @@ def optimize_ir_or_exit(ir_program, options: dict[str, object]):
         )
     except ValueError as exc:
         print(f"Error: {exc}")
+        raise SystemExit(1)
+
+
+def write_compile_metrics_or_exit(input_path: Path, before_asm: str, after_asm: str, report, compile_started: float) -> dict[str, Path]:
+    # Las metricas comparan ASM O0 contra el ASM seleccionado por -O.
+    try:
+        elapsed_ms = (time.perf_counter() - compile_started) * 1000
+        metrics = build_compile_metrics(before_asm, after_asm, report, elapsed_ms)
+        return write_compile_metrics(input_path, metrics)
+    except Exception as exc:
+        print(format_metrics_error(exc))
         raise SystemExit(1)
 
 
@@ -383,6 +458,7 @@ def install_to_user_path() -> int:
 def main():
     parser = build_arg_parser()
     args = parser.parse_args()
+    compile_started = time.perf_counter()
 
     if args.install_path:
         raise SystemExit(install_to_user_path())
@@ -447,28 +523,31 @@ def main():
 
     if args.ir or args.blocks or args.optimized_ir or args.emit_ir_files:
         ir_program = build_ir(ast)
-        # print(ir_program)
         has_optimizations = optimization_enabled(opt_options)
         display_program = ir_program
         report = None
         if args.optimized_ir or args.emit_ir_files or has_optimizations:
+            # Para --optimized-ir se genera tambien si el nivel es O0.
             display_program, report = optimize_ir_or_exit(ir_program, opt_options)
 
         if args.emit_ir_files or args.optimized_ir:
             paths = derive_ir_output_paths(input_path)
             if args.emit_ir_files:
-                paths["ir"].write_text(format_ir(ir_program) + "\n", encoding="utf-8")
-                paths["blocks"].write_text(format_basic_blocks(ir_program) + "\n", encoding="utf-8")
-            paths["optimized_ir"].write_text(format_ir(display_program) + "\n", encoding="utf-8")
-            paths["optimized_blocks"].write_text(format_basic_blocks(display_program) + "\n", encoding="utf-8")
-            if report is not None:
-                paths["report"].write_text(report.text() + "\n", encoding="utf-8")
+                write_base_ir_artifacts(input_path, ir_program)
+            write_optimized_ir_artifacts(input_path, display_program, report)
             if args.emit_ir_files:
                 print("Archivos de IR escritos:")
                 for path in paths.values():
                     if path.exists():
                         print(f"  - {path.resolve()}")
                 print()
+
+        if args.blocks:
+            # --blocks tambien actualiza el archivo correspondiente.
+            if display_program is ir_program:
+                write_base_ir_artifacts(input_path, ir_program)
+            else:
+                write_optimized_ir_artifacts(input_path, display_program, report)
 
         if args.ir and not args.optimized_ir:
             print("IR de tres direcciones:\n")
@@ -493,14 +572,26 @@ def main():
             raise SystemExit(0)
 
     if args.verbose:
-        backend_name = "IR" if (args.ir_backend or optimization_enabled(opt_options)) else "AST"
+        backend_name = "IR" if should_use_ir_backend(args, opt_options) else "AST"
         print(f"[3/4] Generando ensamblador desde {backend_name}...")
 
-    use_ir_backend = args.ir_backend or optimization_enabled(opt_options)
+    use_ir_backend = should_use_ir_backend(args, opt_options)
+    report = None
+    base_assembly_result = None
     if use_ir_backend:
         ir_program = build_ir(ast)
-        # El backend IR recibe la IR transformada solo cuando -O/flags lo piden.
+        # La version base sirve para medir "Antes: sin optimizacion".
+        base_assembly_result = IRAssemblyGenerator().generate_from_ir(ir_program, ast, semantic_result.symbol_table)
+        if base_assembly_result.has_errors:
+            for diagnostic in base_assembly_result.diagnostics:
+                print(format_codegen_error(diagnostic))
+            raise SystemExit(1)
+        # El backend IR recibe IR transformada o IR base si O0.
         program_for_backend, report = optimize_ir_or_exit(ir_program, opt_options)
+        # Toda compilacion mantiene .ir/.blocks sincronizados con el fuente.
+        write_base_ir_artifacts(input_path, ir_program)
+        if optimization_enabled(opt_options):
+            write_optimized_ir_artifacts(input_path, program_for_backend, report)
         generator = IRAssemblyGenerator()
         assembly_result = generator.generate_from_ir(program_for_backend, ast, semantic_result.symbol_table)
         if args.verbose:
@@ -508,10 +599,27 @@ def main():
     else:
         generator = AssemblyGenerator()
         assembly_result = generator.generate(ast, semantic_result.symbol_table)
+        base_assembly_result = assembly_result
     if assembly_result.has_errors:
         for diagnostic in assembly_result.diagnostics:
             print(format_codegen_error(diagnostic))
         raise SystemExit(1)
+
+    if str(opt_options["opt_level"]) == "O1":
+        # O1 usa el renombramiento IR para quitar recargas ASM que ya no son necesarias.
+        post_result = optimize_o1_assembly(assembly_result.lines)
+        assembly_result.lines = post_result.lines
+        if report is not None:
+            report.asm_cleanup_removed += post_result.removed_instructions
+            write_text_if_changed(derive_ir_output_paths(input_path)["report"], report.text() + "\n")
+
+    if str(opt_options["opt_level"]) == "O4":
+        # O4 reprograma el ASM final para que el reordenamiento reduzca ciclos reales.
+        post_result = optimize_o4_assembly(assembly_result.lines)
+        assembly_result.lines = post_result.lines
+        if report is not None:
+            report.reordered_instructions += post_result.reordered_instructions
+            write_text_if_changed(derive_ir_output_paths(input_path)["report"], report.text() + "\n")
 
     binary_output_path = derive_binary_output_path(input_path, args.salida, compile_only=args.compile_only)
     asm_output_path = derive_asm_output_path(binary_output_path)
@@ -521,6 +629,13 @@ def main():
         binary_output_path.write_text(assembly_result.text + "\n", encoding="utf-8")
         if args.asm:
             asm_output_path.write_text(assembly_result.text + "\n", encoding="utf-8")
+        metrics_paths = write_compile_metrics_or_exit(
+            input_path,
+            base_assembly_result.text,
+            assembly_result.text,
+            report,
+            compile_started,
+        )
 
         print("Compilacion completada correctamente.")
         print(f"Objeto escrito en: {binary_output_path.resolve()}")
@@ -528,6 +643,8 @@ def main():
             print(f"Ensamblador escrito en: {asm_output_path.resolve()}")
         else:
             print("Usa -s para generar tambien el archivo ensamblador (.asm).")
+        print(f"Metricas CSV escritas en: {metrics_paths['csv'].resolve()}")
+        print(f"Metricas tabla escritas en: {metrics_paths['table'].resolve()}")
 
         if args.verbose:
             print("Nota: el objeto textual contiene el ensamblador consolidado, sin binarizacion ni encabezado final.")
@@ -540,6 +657,7 @@ def main():
         print("[4/4] Generando codigo binario...")
     try:
         parsed_instructions = parse_assembly_text(assembly_result.text)
+        # .asm textual se parsea igual para backend AST e IR antes de binarizar.
         encoded_instructions = encode_instruction_stream(parsed_instructions)
         data_blob, data_base = build_global_data_blob(ast, semantic_result.symbol_table)
         header = build_program_header(encoded_instructions, data_blob, entry_point=0, data_base=data_base)
@@ -554,6 +672,14 @@ def main():
         print(format_binary_error(exc))
         raise SystemExit(1)
 
+    metrics_paths = write_compile_metrics_or_exit(
+        input_path,
+        base_assembly_result.text,
+        assembly_result.text,
+        report,
+        compile_started,
+    )
+
     print("Compilacion completada correctamente.")
     print(f"Binario escrito en: {binary_output_path.resolve()}")
     print(f"Hexadecimal escrito en: {hex_output_path.resolve()}")
@@ -561,6 +687,8 @@ def main():
         print(f"Ensamblador escrito en: {asm_output_path.resolve()}")
     else:
         print("Usa -s para generar tambien el archivo ensamblador (.asm).")
+    print(f"Metricas CSV escritas en: {metrics_paths['csv'].resolve()}")
+    print(f"Metricas tabla escritas en: {metrics_paths['table'].resolve()}")
 
     if args.verbose:
         print("Nota: el binario contiene encabezado, codigo e imagen inicial de datos globales.")

@@ -329,7 +329,7 @@ class LL1Grammar:
     """Gramatica LL(1).
 
     Entradas: producciones internas.
-    Salida: FIRST, FOLLOW y tabla predictiva.
+    Salida: FIRST/FOLLOW para seleccionar producciones con pila.
     Uso: PredictiveParser y sugerencias.
     """
 
@@ -410,10 +410,9 @@ class LL1Grammar:
         }
         self.first_sets = self._compute_first_sets()
         self.follow_sets = self._compute_follow_sets()
-        self.parse_table, self.conflicts = self._build_parse_table()
 
     def _first_of_sequence(self, symbols: Sequence[str]) -> Set[str]:
-        """Entradas: simbolos. Salida: FIRST(secuencia). Uso: FOLLOW y tabla LL(1)."""
+        """Entradas: simbolos. Salida: FIRST(secuencia). Uso: FOLLOW/parser."""
 
         result: Set[str] = set()
         if not symbols:
@@ -510,27 +509,17 @@ class LL1Grammar:
             expected.update(self.follow_sets.get(nonterminal, set()))
         return expected
 
-    def _build_parse_table(self) -> Tuple[Dict[Tuple[str, str], List[str]], List[str]]:
-        """Entradas: FIRST/FOLLOW. Salida: tabla LL(1) y conflictos. Uso: parser."""
-
-        table: Dict[Tuple[str, str], List[str]] = {}
-        conflicts: List[str] = []
-        for nonterminal, alternatives in self.productions.items():
-            for production in alternatives:
-                first = self._first_of_sequence(production)
-                # Producciones no anulables se indexan por su FIRST.
-                lookaheads = set(first - {EPSILON})
-                if EPSILON in first:
-                    # Producciones anulables tambien se indexan por FOLLOW(A).
-                    lookaheads.update(self.follow_sets[nonterminal])
-                for lookahead in lookaheads:
-                    key = (nonterminal, lookahead)
-                    if key in table and table[key] != production:
-                        # Un conflicto aqui indica que la gramatica no es LL(1).
-                        conflicts.append(f"{nonterminal} con {lookahead}")
-                        continue
-                    table[key] = production
-        return table, conflicts
+    def select_production(self, nonterminal: str, lookahead: str) -> List[str] | None:
+        """Entradas: no-terminal/lookahead. Salida: produccion LL(1) o None. Uso: parser."""
+        for production in self.productions.get(nonterminal, []):
+            first = self._first_of_sequence(production)
+            if lookahead in first - {EPSILON}:
+                # Caso normal: el token actual esta en FIRST(alternativa).
+                return production
+            if EPSILON in first and lookahead in self.follow_sets.get(nonterminal, set()):
+                # Caso vacio: se reduce por EPSILON si el token puede seguir a A.
+                return production
+        return None
 
 
 class PredictiveParser:
@@ -576,17 +565,16 @@ class PredictiveParser:
                 self._recover_terminal(top)
                 continue
 
-            production = self.grammar.parse_table.get((top, lookahead))
+            production = self.grammar.select_production(top, lookahead)
             if production is None:
-                # Celda vacia en la tabla: error predictivo.
-                self._error(self._expected_from_table(top))
+                # Ninguna alternativa acepta el lookahead actual.
+                self._error(self._expected_for_nonterminal(top))
                 if lookahead == EOF:
                     break
                 self._recover_nonterminal(top)
                 continue
 
-            # Aqui se usa la tabla predictiva M[no_terminal, lookahead].
-            # La pila expande de derecha a izquierda.
+            # La pila expande de derecha a izquierda para leer en orden natural.
             for symbol in reversed(production):
                 if symbol != EPSILON:
                     stack.append(symbol)
@@ -604,14 +592,16 @@ class PredictiveParser:
             message += f' Token recibido: "{token.lexeme}".'
         self.diagnostics.append(Diagnostic("LL(1)", message, token.line, token.column, token.start, max(token.end, token.start + 1), expected_set))
 
-    def _expected_from_table(self, nonterminal: str) -> Set[str]:
-        """Entradas: no-terminal. Salida: columnas validas LL(1). Uso: errores."""
-        # Se listan las columnas validas de la fila del no-terminal.
-        return {
-            terminal
-            for (row, terminal), _production in self.grammar.parse_table.items()
-            if row == nonterminal
-        }
+    def _expected_for_nonterminal(self, nonterminal: str) -> Set[str]:
+        """Entradas: no-terminal. Salida: lookaheads validos. Uso: errores."""
+        expected: Set[str] = set()
+        for production in self.grammar.productions.get(nonterminal, []):
+            first = self.grammar._first_of_sequence(production)
+            expected.update(first - {EPSILON})
+            if EPSILON in first:
+                # Si A puede desaparecer, tambien aceptamos FOLLOW(A).
+                expected.update(self.grammar.follow_sets.get(nonterminal, set()))
+        return expected
 
     def _recover_terminal(self, terminal: str):
         """Entradas: terminal esperado. Salida: avanza o simula insercion. Uso: parse."""
@@ -705,6 +695,7 @@ class BottomUpAnalyzer:
 
         line_starts = [0]
         for match in re.finditer("\n", text):
+            # Guarda inicio de linea por si luego se necesita ubicar inserciones.
             line_starts.append(match.end())
 
         starters_requiring_semicolon = {"RET", "CONTINUE", "BREAK", "IDENTIFIER", "MAIN", *TYPE_TOKENS}
@@ -714,10 +705,13 @@ class BottomUpAnalyzer:
             first = line_tokens[0]
             last = line_tokens[-1]
             if first.kind not in starters_requiring_semicolon:
+                # if/while/for/bloques no se cierran con ';'.
                 continue
             if last.kind in no_semicolon_end:
+                # La linea aun parece incompleta; no se fuerza correccion.
                 continue
             if first.kind in TYPE_TOKENS and any(token.kind == "LPAREN" for token in line_tokens):
+                # Evita confundir firma de funcion con declaracion.
                 continue
             if first.kind == "FUNC":
                 continue
@@ -756,8 +750,10 @@ class FCCIDEAnalyzer:
     def analyze(self, text: str, cursor_offset: int = 0) -> AnalysisResult:
         """Entradas: codigo y cursor. Salida: AnalysisResult. Uso: ide_app."""
         tokens, lexical_diagnostics = self.lexer.tokenize(text)
+        # Parser descendente: una pila expande no-terminales con FIRST/FOLLOW.
         parser = PredictiveParser(tokens, self.grammar)
         syntactic_diagnostics = parser.parse()
+        # Analisis ascendente local: balancea pares y sentencias.
         bottom_up_diagnostics, corrections = self.bottom_up.analyze(text, tokens)
         # Las sugerencias mezclan contexto LL(1), prefijo e identificadores.
         diagnostics = lexical_diagnostics + syntactic_diagnostics + bottom_up_diagnostics
@@ -803,14 +799,12 @@ class FCCIDEAnalyzer:
                 "@secure",
                 "true",
                 "false",
-                "data_mem",
-                "zero",
                 "delta",
-                "max",
+                
             }
         )
         if expected:
-            # Tokens esperados por la tabla LL(1) cuando el cursor esta en EOF.
+            # Tokens esperados por la pila LL(1) cuando el cursor esta en EOF.
             candidates.update(DISPLAY_BY_TOKEN.get(kind, kind) for kind in expected if kind != EOF)
         if previous is None or previous.kind in {"SEMI", "LBRACE", "RBRACE"}:
             # Inicio de sentencia: conviene sugerir snippets completos.
@@ -824,8 +818,10 @@ class FCCIDEAnalyzer:
                 ]
             )
         elif previous.kind == "FUNC":
+            # Despues de func se espera tipo de retorno.
             candidates.update(["int", "float", "bool", "char", "void"])
         elif previous.kind in TYPE_TOKENS:
+            # Despues de un tipo suele venir nombre de variable o funcion.
             candidates.update(["main", "nombre_variable", "nombre_funcion"])
         elif previous.kind in {"IF", "WHILE"}:
             candidates.add("(")
