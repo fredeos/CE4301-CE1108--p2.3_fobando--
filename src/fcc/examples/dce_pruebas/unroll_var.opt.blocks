@@ -1,0 +1,87 @@
+bloques main:
+main_B0:
+  succ: main_for_cond_1
+  t1 = 6
+  t2 = 0
+  t3 = 5
+  t4 = 0
+  n = t1
+  acumulado = t2
+  x[t4] = t3
+  t5 = 7
+  t6 = 1
+  x[t6] = t5
+  t7 = 9
+  t8 = 2
+  x[t8] = t7
+  t9 = 11
+  t10 = 3
+  x[t10] = t9
+  t11 = 13
+  t12 = 4
+  x[t12] = t11
+  t13 = 15
+  t14 = 5
+  x[t14] = t13
+  t15 = 17
+  t16 = 6
+  x[t16] = t15
+  t17 = 19
+  t18 = 7
+  x[t18] = t17
+  t19 = 0
+  t20 = x[t19]
+  t21 = 0
+  y[t21] = t20
+  t22 = 1
+  t23 = x[t22]
+  t24 = 1
+  y[t24] = t23
+  t25 = 0
+  t26 = y[t25]
+  t27 = 1
+  t28 = y[t27]
+  t30 = 2
+  t29 = t26 + t28
+  k = t30
+  acumulado = t29
+
+main_for_cond_1:
+  pred: main_B0, main_for_update_2
+  succ: main_B2, main_for_end_3
+  t31 = k < n
+  if_false t31 goto main_for_end_3
+
+main_B2:
+  pred: main_for_cond_1
+  succ: main_for_update_2
+  t32 = x[k]
+  t33 = 1
+  t34 = k - t33
+  t35 = y[t34]
+  t37 = 2
+  t36 = t32 + t35
+  t38 = k - t37
+  t39 = y[t38]
+  t40 = 2
+  t41 = t39 / t40
+  t42 = t36 - t41
+  y[k] = t42
+  t43 = y[k]
+  t44 = acumulado + t43
+  acumulado = t44
+
+main_for_update_2:
+  pred: main_B2
+  succ: main_for_cond_1
+  t45 = 1
+  t46 = k + t45
+  k = t46
+  goto main_for_cond_1
+
+main_for_end_3:
+  pred: main_for_cond_1
+  t47 = 5
+  resultado = acumulado
+  resultado_variable_pequena = t47
+  return resultado

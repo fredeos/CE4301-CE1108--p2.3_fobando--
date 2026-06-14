@@ -93,6 +93,7 @@ class DeadCodeEliminator:
                 current_program,
                 program_blocks,
             )
+        #print(total_result.removed_instructions)
 
         return current_program, total_result
 
