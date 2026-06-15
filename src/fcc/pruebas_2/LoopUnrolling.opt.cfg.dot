@@ -1,0 +1,18 @@
+digraph CFG {
+  "procesar_bloques_B0";
+  "procesar_bloques_while_cond_1";
+  "procesar_bloques_B2";
+  "procesar_bloques_B3";
+  "procesar_bloques_B4";
+  "procesar_bloques_while_end_2";
+  "main_B0";
+  "procesar_bloques_B0" -> "procesar_bloques_while_cond_1";
+  "procesar_bloques_while_cond_1" -> "procesar_bloques_while_end_2" [label="t5 == 0"];
+  "procesar_bloques_while_cond_1" -> "procesar_bloques_B2" [label="t5 != 0"];
+  "procesar_bloques_B2" -> "procesar_bloques_while_end_2" [label="t5_u1 == 0"];
+  "procesar_bloques_B2" -> "procesar_bloques_B3" [label="t5_u1 != 0"];
+  "procesar_bloques_B3" -> "procesar_bloques_while_end_2" [label="t5_u2 == 0"];
+  "procesar_bloques_B3" -> "procesar_bloques_B4" [label="t5_u2 != 0"];
+  "procesar_bloques_B4" -> "procesar_bloques_while_cond_1";
+  "main_B0" -> "procesar_bloques_B0";
+}

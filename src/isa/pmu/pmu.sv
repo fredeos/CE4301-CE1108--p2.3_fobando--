@@ -347,6 +347,18 @@ module pmu #(
         end
     end
 
+
+    // Lógica del contador interna en la PMU
+    always_ff @(posedge clk or posedge rst_n) begin
+        if (!rst_n) begin
+            val_total_inst_count <= '0;
+        end else begin
+            if ((wb_instr != 32'h00000080) && (~wb_en) && (!wb_end_program)) begin
+                val_total_inst_count <= val_total_inst_count + 1;
+            end
+        end
+    end
+
     // ================================================================
     // INTERFAZ DE LECTURA: MULTIPLEXOR COMBINACIONAL DE CONTADORES
     // ================================================================

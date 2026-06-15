@@ -480,6 +480,24 @@ module pipeline_wcache ( // Pipeline de 5 etapas para arquitectura RISC: F32IS
         end
     end
 
+    // --- 6. Instrucciones validas ---
+    // + Flip-Flop para pipe WB
+    logic [31:0] pmu_inst_count;
+
+    always_ff @(posedge clk, posedge rst) begin
+        if (rst) begin
+            pmu_inst_count <= '0;
+        end else begin
+            // Una instrucción es válida si:
+            // - No es un NOP (instrucción vacía o burbuja)
+            // - La etapa WB no está sufriendo un Stall (~WB_EN significa que el pipeline AVANZA hacia WB)
+            // - No estamos en rst ni el programa ha terminado completamente
+            if ((WB_INSTR != nop) && (~WB_EN) && (!WB_end_program)) begin
+                pmu_inst_count <= pmu_inst_count + 1;
+            end
+        end
+    end
+
     // --- 6. Unidad de Riesgos (Hazard Unit) ---
     hazard_unit #(.INSTR_WIDTH(32)) _hazard_unit (
         .IDInstr(ID_INSTR),

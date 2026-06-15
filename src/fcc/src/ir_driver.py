@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from typing import List, Optional
 
 from basic_blocks import BasicBlockBuilder
@@ -43,6 +44,17 @@ def format_ir(program: IRProgram) -> str:
 def format_basic_blocks(program: IRProgram) -> str:
     """Entradas: IRProgram. Salida: bloques basicos. Uso: --blocks/.blocks."""
     return BasicBlockBuilder().build_program(program).text()
+
+
+def format_cfg_json(program: IRProgram) -> str:
+    """Entradas: IRProgram. Salida: CFG JSON. Uso: fcc.py/.cfg.json."""
+    cfg = BasicBlockBuilder().build_program(program).to_jsonable()
+    return json.dumps(cfg, ensure_ascii=False, indent=2)
+
+
+def format_cfg_dot(program: IRProgram) -> str:
+    """Entradas: IRProgram. Salida: CFG DOT/Graphviz. Uso: fcc.py/.cfg.dot."""
+    return BasicBlockBuilder().build_program(program).to_dot()
 
 
 class ThreeAddressFormatter:

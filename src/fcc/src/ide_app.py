@@ -223,14 +223,8 @@ class FCCIDE(tk.Tk):
         self.editor.tag_configure("current_error", background="#ffe4e8")
 
     def _insert_template(self):
-        """Entradas: editor vacio. Salida: plantilla base. Uso: __init__."""
-        self.editor.insert(
-            "1.0",
-            "func void main(){\n"
-            "    int x = 0;\n"
-            "    ret;\n"
-            "}\n",
-        )
+        """Entradas: editor vacio. Salida: vista inicial limpia. Uso: __init__/Nuevo."""
+        # El IDE inicia en blanco; los snippets se insertan desde sugerencias.
         self._update_line_numbers()
 
     def _on_modified(self, _event=None):
@@ -243,8 +237,8 @@ class FCCIDE(tk.Tk):
             return
         if self.pending_analysis is not None:
             self.after_cancel(self.pending_analysis)
-        # Debounce corto: evita analizar en cada tecla individual.
-        self.pending_analysis = self.after(250, lambda: self._analyze_now(show_suggestions=True))
+        # Debounce corto: analiza errores sin abrir sugerencias automaticamente.
+        self.pending_analysis = self.after(250, self._analyze_now)
         self._update_line_numbers()
 
     def _index_from_offset(self, offset: int) -> str:
@@ -265,7 +259,7 @@ class FCCIDE(tk.Tk):
         self.pending_analysis = None
         text = self._text()
         cursor_offset = self._offset_from_index("insert")
-        # Analisis completo: lexer, tabla LL(1), recuperacion y sugerencias.
+        # Analisis completo: lexer, pila LL(1), recuperacion y sugerencias.
         self.last_result = self.analyzer.analyze(text, cursor_offset)
         if self._auto_apply_corrections(force=force_corrections):
             # Si se edito automaticamente, se analiza de nuevo sobre texto final.
@@ -290,14 +284,17 @@ class FCCIDE(tk.Tk):
         selected = []
         for correction in self.last_result.corrections:
             correction_line = int(self.editor.index(self._index_from_offset(correction.start)).split(".")[0])
+            # El ';' espera a que el cursor abandone la linea para no interrumpir escritura.
             if correction.title.startswith('Agregar ";"') and cursor_line > correction_line:
-                # El ';' se agrega solo cuando el cursor ya salio de la linea.
                 selected.append(correction)
             elif correction.title.startswith("Eliminar cierre sobrante"):
+                # Los cierres extra si se eliminan de inmediato: no dependen de contexto futuro.
                 selected.append(correction)
             elif correction.title.startswith("Agregar ") and not correction.title.startswith('Agregar ";"'):
+                # Llaves, parentesis y corchetes faltantes se completan en caliente.
                 selected.append(correction)
             elif force and correction.title.startswith("Agregar "):
+                # Analizar/guardar fuerza correcciones pendientes.
                 selected.append(correction)
 
         if not selected:
@@ -307,6 +304,7 @@ class FCCIDE(tk.Tk):
         grouped = []
         for correction in selected:
             if grouped and grouped[-1].start == correction.start and grouped[-1].end == correction.end:
+                # Varias inserciones en el mismo punto se unen en una sola edicion.
                 grouped[-1].replacement += correction.replacement
                 grouped[-1].title += f" + {correction.title}"
                 continue
@@ -340,10 +338,13 @@ class FCCIDE(tk.Tk):
             start = self._index_from_offset(token.start)
             end = self._index_from_offset(token.end)
             if token.kind in KEYWORD_KINDS:
+                # Palabras reservadas: color azul.
                 self.editor.tag_add("keyword", start, end)
             elif token.kind.endswith("_LITERAL"):
+                # Literales numericos/textuales: color verde.
                 self.editor.tag_add("literal", start, end)
             elif token.kind not in {"IDENTIFIER", "MAIN", "EOF"} and token.kind not in TYPE_TOKENS:
+                # Operadores y separadores quedan diferenciados del texto normal.
                 self.editor.tag_add("operator", start, end)
 
         for diagnostic in self.last_result.diagnostics:
@@ -358,6 +359,7 @@ class FCCIDE(tk.Tk):
         if self.last_result is None:
             return
         for index, diagnostic in enumerate(self.last_result.diagnostics):
+            # El iid conserva la posicion para saltar al diagnostico con doble click.
             self.diagnostics_tree.insert(
                 "",
                 "end",
@@ -396,6 +398,7 @@ class FCCIDE(tk.Tk):
             self._hide_suggestions()
             return
         if self.suggestion_popup is None:
+            # Popup liviano, sin decorar, similar a Ctrl+Space de un editor.
             self.suggestion_popup = tk.Toplevel(self)
             self.suggestion_popup.withdraw()
             self.suggestion_popup.overrideredirect(True)
@@ -434,11 +437,13 @@ class FCCIDE(tk.Tk):
         for suggestion in self.last_result.suggestions:
             label = suggestion.text.replace("\n", "\\n")
             if suggestion.detail:
+                # Se muestra texto + razon, pero se inserta solo suggestion.text.
                 label = f"{suggestion.text:<18} {suggestion.detail}"
                 label = label.replace("\n", "\\n")
             self.visible_suggestion_texts.append(suggestion.text)
             self.suggestion_list.insert("end", label)
         if self.suggestion_list.size() > 0:
+            # La primera sugerencia queda lista para Enter.
             self.suggestion_list.selection_set(0)
 
     def _hide_suggestions(self, _event=None):
@@ -498,23 +503,43 @@ class FCCIDE(tk.Tk):
             return self._insert_suggestion()
 
         current_line = self.editor.get("insert linestart", "insert")
+        line_after_cursor = self.editor.get("insert", "insert lineend")
         base_indent = self._leading_whitespace(current_line)
         before = self.editor.get("insert -1c", "insert")
         after = self.editor.get("insert", "insert +1c")
 
         self.applying_correction = True
         try:
-            if before == "{" and after == "}":
+            if self._looks_like_function_header(current_line, line_after_cursor):
+                # Firma sin llave: Enter crea el bloque de funcion completo.
+                insert_index = self.editor.index("insert")
+                self.editor.insert("insert", f"{{\n{base_indent}{INDENT_UNIT}\n{base_indent}}}")
+                self.editor.mark_set("insert", f"{insert_index} + 1 line lineend")
+            elif before == "{" and after == "}":
                 # Enter entre llaves crea cuerpo indentado y deja el cierre alineado.
+                insert_index = self.editor.index("insert")
                 self.editor.insert("insert", f"\n{base_indent}{INDENT_UNIT}\n{base_indent}")
-                self.editor.mark_set("insert", f"insert - {len(base_indent) + 1} chars")
+                self.editor.mark_set("insert", f"{insert_index} + 1 line lineend")
             else:
                 self.editor.insert("insert", "\n" + base_indent)
+            self.editor.see("insert")
             self.editor.edit_modified(True)
         finally:
             self.applying_correction = False
         self._on_modified()
         return "break"
+
+    def _looks_like_function_header(self, before_cursor: str, after_cursor: str) -> bool:
+        """Entradas: linea partida por cursor. Salida: True si falta bloque. Uso: Enter."""
+        full_line = before_cursor + after_cursor
+        stripped = full_line.strip()
+        if "{" in stripped or not before_cursor.rstrip().endswith(")"):
+            # Ya tiene bloque o la firma aun esta incompleta.
+            return False
+        if after_cursor.strip():
+            # Hay texto despues del cursor; no se inserta bloque en medio.
+            return False
+        return stripped.startswith("func ") or stripped.startswith("@secure")
 
     def _leading_whitespace(self, text: str) -> str:
         """Entradas: linea. Salida: indentacion inicial. Uso: Enter/llaves."""
@@ -637,12 +662,11 @@ class FCCIDE(tk.Tk):
             return
 
         command = [
-            # -s escribe .asm; el flujo normal tambien escribe .bin y .hex.
+            # -s escribe .asm; -O0 ya baja desde IR sin optimizaciones.
             sys.executable,
             str(PROJECT_ROOT / "fcc.py"),
             str(self.current_file),
             "-s",
-            "--ir-backend",
             "-O0",
         ]
         completed = subprocess.run(command, capture_output=True, text=True, cwd=str(PROJECT_ROOT))
@@ -660,14 +684,21 @@ class FCCIDE(tk.Tk):
         if source is None:
             return
         self.compiled_paths = {
+            # Se guardan rutas derivadas para botones ASM/IR/BinHex.
             "asm": source.with_suffix(".asm"),
             "bin": source.with_suffix(".bin"),
             "hex": source.with_suffix(".hex"),
             "ir": source.with_suffix(".ir"),
             "blocks": source.with_suffix(".blocks"),
+            "cfg_json": source.with_suffix(".cfg.json"),
+            "cfg_dot": source.with_suffix(".cfg.dot"),
             "opt_ir": source.with_suffix(".opt.ir"),
             "opt_blocks": source.with_suffix(".opt.blocks"),
+            "opt_cfg_json": source.with_suffix(".opt.cfg.json"),
+            "opt_cfg_dot": source.with_suffix(".opt.cfg.dot"),
             "report": source.with_suffix(".opt.report"),
+            "metrics_csv": source.with_suffix(".metrics.csv"),
+            "metrics_table": source.with_suffix(".metrics.txt"),
         }
         self._set_output_buttons(True)
 

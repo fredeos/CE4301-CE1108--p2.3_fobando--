@@ -578,12 +578,14 @@ class SemanticAnalyzer:
         for declarator in node.declarators:
             dims = self._extract_dimensions(declarator)
             type_info = self.parse_type_string(node.var_type, dims)
+            array_reference = type_info.is_array and declarator.initializer is not None
             self._validate_type(
                 type_info,
                 declarator.line,
                 declarator.column,
                 "variable",
                 declarator.name,
+                allow_unsized_array=array_reference,
             )
 
             symbol = Symbol(
@@ -593,6 +595,7 @@ class SemanticAnalyzer:
                 scope_name=self.symbol_table.current_scope.name,
                 line=declarator.line,
                 column=declarator.column,
+                extra={"array_reference": array_reference},
             )
 
             if not self.symbol_table.define(symbol):

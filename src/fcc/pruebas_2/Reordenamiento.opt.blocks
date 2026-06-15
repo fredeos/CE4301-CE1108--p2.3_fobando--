@@ -1,0 +1,92 @@
+bloques analizar_sensor_reordenado:
+----------------- inicio analizar_sensor_reordenado_B0 -----------------
+analizar_sensor_reordenado_B0:
+  succ: analizar_sensor_reordenado_while_cond_1
+  t1 = 0
+  t2 = 0
+  i = t1
+  total = t2
+------------------ fin analizar_sensor_reordenado_B0 -------------------
+------------ inicio analizar_sensor_reordenado_while_cond_1 ------------
+analizar_sensor_reordenado_while_cond_1:
+  pred: analizar_sensor_reordenado_B0, analizar_sensor_reordenado_if_end_3
+  succ: analizar_sensor_reordenado_B2, analizar_sensor_reordenado_while_end_2
+  t3 = i < tamano
+  if_false t3 goto analizar_sensor_reordenado_while_end_2
+------------- fin analizar_sensor_reordenado_while_cond_1 --------------
+----------------- inicio analizar_sensor_reordenado_B2 -----------------
+analizar_sensor_reordenado_B2:
+  pred: analizar_sensor_reordenado_while_cond_1
+  succ: analizar_sensor_reordenado_B3, analizar_sensor_reordenado_if_next_4
+  t4 = datos[i]
+  t5 = 100
+  t7 = 2
+  t9 = 10
+  t11 = 3
+  t13 = 50
+  t6 = i * t5
+  lectura = t4
+  log = t6
+  t8 = lectura * t7
+  t14 = lectura > t13
+  promedio = t8
+  t10 = promedio + t9
+  ajuste = t10
+  t12 = ajuste * t11
+  resultado = t12
+  if_false t14 goto analizar_sensor_reordenado_if_next_4
+------------------ fin analizar_sensor_reordenado_B2 -------------------
+----------------- inicio analizar_sensor_reordenado_B3 -----------------
+analizar_sensor_reordenado_B3:
+  pred: analizar_sensor_reordenado_B2
+  succ: analizar_sensor_reordenado_if_end_3
+  t15 = total + resultado
+  total = t15
+  goto analizar_sensor_reordenado_if_end_3
+------------------ fin analizar_sensor_reordenado_B3 -------------------
+------------- inicio analizar_sensor_reordenado_if_next_4 --------------
+analizar_sensor_reordenado_if_next_4:
+  pred: analizar_sensor_reordenado_B2
+  succ: analizar_sensor_reordenado_if_end_3
+--------------- fin analizar_sensor_reordenado_if_next_4 ---------------
+-------------- inicio analizar_sensor_reordenado_if_end_3 --------------
+analizar_sensor_reordenado_if_end_3:
+  pred: analizar_sensor_reordenado_B3, analizar_sensor_reordenado_if_next_4
+  succ: analizar_sensor_reordenado_while_cond_1
+  t16 = 1
+  t17 = i + t16
+  i = t17
+  goto analizar_sensor_reordenado_while_cond_1
+--------------- fin analizar_sensor_reordenado_if_end_3 ----------------
+------------ inicio analizar_sensor_reordenado_while_end_2 -------------
+analizar_sensor_reordenado_while_end_2:
+  pred: analizar_sensor_reordenado_while_cond_1
+  return total
+-------------- fin analizar_sensor_reordenado_while_end_2 --------------
+
+bloques main:
+---------------------------- inicio main_B0 ----------------------------
+main_B0:
+  calls: analizar_sensor_reordenado_B0
+  t1 = 20
+  t2 = 0
+  lista[t2] = t1
+  t3 = 60
+  t4 = 1
+  lista[t4] = t3
+  t5 = 45
+  t6 = 2
+  lista[t6] = t5
+  t7 = 80
+  t8 = 3
+  lista[t8] = t7
+  t9 = 70
+  t10 = 4
+  lista[t10] = t9
+  t11 = 5
+  param lista
+  param t11
+  t12 = call analizar_sensor_reordenado, 2
+  resultado = t12
+  return resultado
+----------------------------- fin main_B0 ------------------------------

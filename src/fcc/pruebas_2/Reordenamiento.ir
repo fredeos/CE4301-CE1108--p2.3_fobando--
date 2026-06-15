@@ -1,0 +1,61 @@
+func analizar_sensor_reordenado(datos, tamano) -> int
+  t1 = 0
+  i = t1
+  t2 = 0
+  total = t2
+L1:
+  if i < tamano goto L2
+  goto L3
+L2:
+  t4 = datos[i]
+  lectura = t4
+  t5 = 100
+  t6 = i * t5
+  log = t6
+  t7 = 2
+  t8 = lectura * t7
+  promedio = t8
+  t9 = 10
+  t10 = promedio + t9
+  ajuste = t10
+  t11 = 3
+  t12 = ajuste * t11
+  resultado = t12
+  t13 = 50
+  if lectura > t13 goto L4
+  goto L5
+L4:
+  t15 = total + resultado
+  total = t15
+  goto L6
+L5:
+L6:
+  t16 = 1
+  t17 = i + t16
+  i = t17
+  goto L1
+L3:
+  return total
+
+func main() -> int
+  t1 = 20
+  t2 = 0
+  lista[t2] = t1
+  t3 = 60
+  t4 = 1
+  lista[t4] = t3
+  t5 = 45
+  t6 = 2
+  lista[t6] = t5
+  t7 = 80
+  t8 = 3
+  lista[t8] = t7
+  t9 = 70
+  t10 = 4
+  lista[t10] = t9
+  t11 = 5
+  param lista
+  param t11
+  t12 = call analizar_sensor_reordenado, 2
+  resultado = t12
+  return resultado

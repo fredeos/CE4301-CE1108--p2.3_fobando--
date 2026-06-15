@@ -1,0 +1,9 @@
+Metrica,Antes: sin optimizacion,Despues: con optimizacion,Unidad,Mejora
+Conteo de instrucciones,262,352,instrucciones,aumenta 90
+Tamano de codigo,1048,1408,bytes,aumenta 360
+Ciclos estimados por simulador,803,795,ciclos,mejora 8
+Tiempo de compilacion,-,19.813,ms,medido
+Loops desenrollados,0,1,loops,mejora 1
+Instrucciones eliminadas,0,0,instrucciones,sin cambios
+Instrucciones reordenadas,0,0,instrucciones,sin cambios
+Instrucciones renombradas,0,0,instrucciones,sin cambios

@@ -1,0 +1,14 @@
+Reporte de optimizacion IR:
+  Nivel: O2
+  Loop unrolling parcial: factor=3
+  Renombramiento de temporales/estaticos: no
+  Renombramientos aplicados: 0
+  Limpieza ASM por renombramiento: 0
+  Eliminación de código muerto: no
+  Instrucciones eliminadas por DCE: 0
+  Reordenamiento seguro: no
+  Instrucciones reordenadas: 0
+  Loops desenrollados:
+    - procesar_bloques:procesar_bloques_while_cond_1 x3, N=6
+  Maximo factor detectado por loop:
+    - procesar_bloques:procesar_bloques_while_cond_1 max=6, N=6
