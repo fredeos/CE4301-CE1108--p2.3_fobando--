@@ -94,7 +94,7 @@ class IRAssemblyGenerator(AssemblyGenerator):
 
             self._emit("mov", "p0", "zero", comment="resultado de programa por defecto")
             self._emit("call", LabelRef("main"), comment="entrada principal")
-            self._emit("end", comment="fin real del programa tras retornar de main")
+            self._emit_end_marker(comment="fin real del programa tras retornar de main")
             self._emit_label("__end_fallback__")
             self._emit("jmp", LabelRef("__end_fallback__"), comment="respaldo si end se interpreta como nop")
 
@@ -104,7 +104,13 @@ class IRAssemblyGenerator(AssemblyGenerator):
 
         if not self.emit_entrypoint:
             # Sin __init__, end queda al final fisico del stream generado.
-            self._emit("end")
+            self._emit_end_marker()
+
+    def _emit_end_marker(self, comment: Optional[str] = None):
+        """Entradas: comentario opcional. Salida: 3 nop y end. Uso: cierre ASM."""
+        for _ in range(3):
+            self._emit("nop", comment="relleno antes de end")
+        self._emit("end", comment=comment)
 
     def _emit_ir_function(self, function: IRFunction):
         """Entradas: funcion IR. Salida: prologo, cuerpo y epilogo. Uso: _emit_ir_program."""
