@@ -1,0 +1,44 @@
+[*]
+[*] GTKWave Analyzer v3.3.100 (w)1999-2019 BSI
+[*] Sun Jun 14 22:43:10 2026
+[*]
+[dumpfile] "B:\workbench\repos\CE4301-CE1108--p2.3_fobando--\gen\pipeline.vcd"
+[dumpfile_mtime] "Sun Jun 14 22:18:46 2026"
+[dumpfile_size] 325863
+[savefile] "B:\workbench\repos\CE4301-CE1108--p2.3_fobando--\config\pipeline.gtkw"
+[timestart] 4003900000000
+[size] 1536 793
+[pos] -1 -1
+*-35.200001 4075100000000 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
+[treeopen] pipeline_tb.
+[sst_width] 246
+[signals_width] 303
+[sst_expanded] 1
+[sst_vpaned_height] 272
+@28
+pipeline_tb.clk
+pipeline_tb.rst
+@22
+pipeline_tb._cpu.IF_INSTR[31:0]
+pipeline_tb._cpu.ID_INSTR[31:0]
+pipeline_tb._cpu.EX_INSTR[31:0]
+pipeline_tb._cpu.MEM_INSTR[31:0]
+pipeline_tb._cpu.WB_INSTR[31:0]
+@28
+pipeline_tb._cpu.ID_end_program
+pipeline_tb._cpu.EX_end_program
+pipeline_tb._cpu.MEM_end_program
+pipeline_tb._cpu.WB_end_program
+pipeline_tb._cpu.IF_EN
+pipeline_tb._cpu.ID_EN
+pipeline_tb._cpu.EX_EN
+pipeline_tb._cpu.MEM_EN
+pipeline_tb._cpu.WB_EN
+pipeline_tb._cpu.MEM_mem_ready[1:0]
+pipeline_tb._cpu.IF_CLR
+pipeline_tb._cpu.ID_CLR
+pipeline_tb._cpu.EX_CLR
+@29
+pipeline_tb._cpu.MEM_CLR
+[pattern_trace] 1
+[pattern_trace] 0

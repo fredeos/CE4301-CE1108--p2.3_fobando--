@@ -1,0 +1,16 @@
+[*]
+[*] GTKWave Analyzer v3.3.100 (w)1999-2019 BSI
+[*] Thu May 21 21:45:17 2026
+[*]
+[dumpfile] "B:\workbench\repos\CE4301-CE1108--p2.3_fobando--\config\gen\control_unit.vcd"
+[savefile] "B:\workbench\repos\CE4301-CE1108--p2.3_fobando--\config\default.gtkw"
+[timestart] 0
+[size] 1000 600
+[pos] 213 20
+*-5.580310 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
+[sst_width] 197
+[signals_width] 132
+[sst_expanded] 1
+[sst_vpaned_height] 153
+[pattern_trace] 1
+[pattern_trace] 0

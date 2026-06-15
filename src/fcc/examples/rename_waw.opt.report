@@ -1,0 +1,5 @@
+Reporte de optimizacion IR:
+  Nivel: O1
+  Loop unrolling parcial: factor=1
+  Renombramiento de temporales/estaticos: si
+  Renombramientos aplicados: 14

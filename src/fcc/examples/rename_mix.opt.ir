@@ -1,0 +1,23 @@
+func calcula(entrada) -> int
+  t1_1 = 1
+  t2_1 = entrada + t1_1
+  valor_1 = t2_1
+  t3_1 = 2
+  t4_1 = valor_1 * t3_1
+  copia_1 = t4_1
+  t5_1 = 3
+  t6_1 = entrada - t5_1
+  valor_2 = t6_1
+  t7_1 = copia_1 + valor_2
+  mezcla_1 = t7_1
+  t8_1 = mezcla_1 - entrada
+  valor_3 = t8_1
+  t9_1 = valor_3 + copia_1
+  return t9_1
+
+func main() -> int
+  t1_1 = 12
+  param t1_1
+  t2_1 = call calcula, 1
+  resultado_1 = t2_1
+  return resultado_1

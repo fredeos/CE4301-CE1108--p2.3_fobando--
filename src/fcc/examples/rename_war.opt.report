@@ -1,0 +1,10 @@
+Reporte de optimizacion IR:
+  Nivel: O1
+  Loop unrolling parcial: factor=1
+  Renombramiento de temporales/estaticos: si
+  Renombramientos aplicados: 9
+  Limpieza ASM por renombramiento: 6
+  Eliminación de código muerto: no
+  Instrucciones eliminadas por DCE: 0
+  Reordenamiento seguro: no
+  Instrucciones reordenadas: 0

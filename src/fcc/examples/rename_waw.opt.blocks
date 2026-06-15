@@ -1,0 +1,17 @@
+bloques main:
+main_B0:
+  t1_1 = 4
+  valor_1 = t1_1
+  t2_1 = 1
+  t3_1 = valor_1 + t2_1
+  primero_1 = t3_1
+  t4_1 = 20
+  valor_2 = t4_1
+  t5_1 = 2
+  t6_1 = valor_2 + t5_1
+  segundo_1 = t6_1
+  t7_1 = 7
+  valor_3 = t7_1
+  t8_1 = primero_1 + segundo_1
+  t9_1 = t8_1 + valor_3
+  return t9_1

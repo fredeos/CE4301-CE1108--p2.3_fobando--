@@ -1,0 +1,17 @@
+bloques calcular:
+calcular_B0:
+  t1 = 1
+  t2 = n + t1
+  base = t2
+  return base
+
+bloques main:
+main_B0:
+  t1 = 10
+  x = t1
+  t2 = 5
+  t3 = x + t2
+  y = t3
+  param y
+  t6 = call calcular, 1
+  return x

@@ -1,0 +1,675 @@
+{
+  "node": "ProgramNode",
+  "line": 1,
+  "column": 0,
+  "declarations": [
+    {
+      "node": "VarDeclNode",
+      "line": 4,
+      "column": 0,
+      "var_type": "int",
+      "declarators": [
+        {
+          "node": "VarDeclaratorNode",
+          "line": 4,
+          "column": 4,
+          "name": "fibonacci_series",
+          "dimensions": [
+            {
+              "node": "LiteralNode",
+              "line": 4,
+              "column": 21,
+              "value": "11",
+              "literal_type": "int"
+            }
+          ],
+          "initializer": null
+        }
+      ]
+    },
+    {
+      "node": "VarDeclNode",
+      "line": 5,
+      "column": 0,
+      "var_type": "int",
+      "declarators": [
+        {
+          "node": "VarDeclaratorNode",
+          "line": 5,
+          "column": 4,
+          "name": "fibonacci_result",
+          "dimensions": [],
+          "initializer": null
+        }
+      ]
+    },
+    {
+      "node": "FunctionDeclNode",
+      "line": 7,
+      "column": 0,
+      "return_type": "int",
+      "name": "fibonacci_aux",
+      "params": [
+        {
+          "node": "ParameterNode",
+          "line": 7,
+          "column": 23,
+          "param_type": "int",
+          "name": "limite"
+        }
+      ],
+      "body": {
+        "node": "BlockNode",
+        "line": 7,
+        "column": 34,
+        "statements": [
+          {
+            "node": "VarDeclNode",
+            "line": 8,
+            "column": 4,
+            "var_type": "int",
+            "declarators": [
+              {
+                "node": "VarDeclaratorNode",
+                "line": 8,
+                "column": 8,
+                "name": "anterior",
+                "dimensions": [],
+                "initializer": {
+                  "node": "LiteralNode",
+                  "line": 8,
+                  "column": 19,
+                  "value": "0",
+                  "literal_type": "int"
+                }
+              }
+            ]
+          },
+          {
+            "node": "VarDeclNode",
+            "line": 9,
+            "column": 4,
+            "var_type": "int",
+            "declarators": [
+              {
+                "node": "VarDeclaratorNode",
+                "line": 9,
+                "column": 8,
+                "name": "actual",
+                "dimensions": [],
+                "initializer": {
+                  "node": "LiteralNode",
+                  "line": 9,
+                  "column": 17,
+                  "value": "1",
+                  "literal_type": "int"
+                }
+              }
+            ]
+          },
+          {
+            "node": "VarDeclNode",
+            "line": 10,
+            "column": 4,
+            "var_type": "int",
+            "declarators": [
+              {
+                "node": "VarDeclaratorNode",
+                "line": 10,
+                "column": 8,
+                "name": "siguiente",
+                "dimensions": [],
+                "initializer": {
+                  "node": "LiteralNode",
+                  "line": 10,
+                  "column": 20,
+                  "value": "0",
+                  "literal_type": "int"
+                }
+              }
+            ]
+          },
+          {
+            "node": "VarDeclNode",
+            "line": 11,
+            "column": 4,
+            "var_type": "int",
+            "declarators": [
+              {
+                "node": "VarDeclaratorNode",
+                "line": 11,
+                "column": 8,
+                "name": "i",
+                "dimensions": [],
+                "initializer": {
+                  "node": "LiteralNode",
+                  "line": 11,
+                  "column": 12,
+                  "value": "2",
+                  "literal_type": "int"
+                }
+              }
+            ]
+          },
+          {
+            "node": "IfNode",
+            "line": 13,
+            "column": 4,
+            "condition": {
+              "node": "BinaryOpNode",
+              "line": 13,
+              "column": 8,
+              "operator": "<",
+              "left": {
+                "node": "IdentifierNode",
+                "line": 13,
+                "column": 8,
+                "name": "limite"
+              },
+              "right": {
+                "node": "LiteralNode",
+                "line": 13,
+                "column": 17,
+                "value": "0",
+                "literal_type": "int"
+              }
+            },
+            "then_block": {
+              "node": "BlockNode",
+              "line": 13,
+              "column": 20,
+              "statements": [
+                {
+                  "node": "AssignmentNode",
+                  "line": 14,
+                  "column": 8,
+                  "target": {
+                    "node": "IdentifierNode",
+                    "line": 14,
+                    "column": 8,
+                    "name": "limite"
+                  },
+                  "operator": "=",
+                  "value": {
+                    "node": "LiteralNode",
+                    "line": 14,
+                    "column": 17,
+                    "value": "0",
+                    "literal_type": "int"
+                  }
+                }
+              ]
+            },
+            "elif_branches": [],
+            "else_block": null
+          },
+          {
+            "node": "IfNode",
+            "line": 17,
+            "column": 4,
+            "condition": {
+              "node": "BinaryOpNode",
+              "line": 17,
+              "column": 8,
+              "operator": ">",
+              "left": {
+                "node": "IdentifierNode",
+                "line": 17,
+                "column": 8,
+                "name": "limite"
+              },
+              "right": {
+                "node": "LiteralNode",
+                "line": 17,
+                "column": 17,
+                "value": "10",
+                "literal_type": "int"
+              }
+            },
+            "then_block": {
+              "node": "BlockNode",
+              "line": 17,
+              "column": 21,
+              "statements": [
+                {
+                  "node": "AssignmentNode",
+                  "line": 18,
+                  "column": 8,
+                  "target": {
+                    "node": "IdentifierNode",
+                    "line": 18,
+                    "column": 8,
+                    "name": "limite"
+                  },
+                  "operator": "=",
+                  "value": {
+                    "node": "LiteralNode",
+                    "line": 18,
+                    "column": 17,
+                    "value": "10",
+                    "literal_type": "int"
+                  }
+                }
+              ]
+            },
+            "elif_branches": [],
+            "else_block": null
+          },
+          {
+            "node": "AssignmentNode",
+            "line": 21,
+            "column": 4,
+            "target": {
+              "node": "IndexAccessNode",
+              "line": 21,
+              "column": 20,
+              "target": {
+                "node": "IdentifierNode",
+                "line": 21,
+                "column": 4,
+                "name": "fibonacci_series"
+              },
+              "index": {
+                "node": "LiteralNode",
+                "line": 21,
+                "column": 21,
+                "value": "0",
+                "literal_type": "int"
+              }
+            },
+            "operator": "=",
+            "value": {
+              "node": "IdentifierNode",
+              "line": 21,
+              "column": 26,
+              "name": "anterior"
+            }
+          },
+          {
+            "node": "AssignmentNode",
+            "line": 22,
+            "column": 4,
+            "target": {
+              "node": "IdentifierNode",
+              "line": 22,
+              "column": 4,
+              "name": "fibonacci_result"
+            },
+            "operator": "=",
+            "value": {
+              "node": "IdentifierNode",
+              "line": 22,
+              "column": 23,
+              "name": "anterior"
+            }
+          },
+          {
+            "node": "IfNode",
+            "line": 24,
+            "column": 4,
+            "condition": {
+              "node": "BinaryOpNode",
+              "line": 24,
+              "column": 8,
+              "operator": ">=",
+              "left": {
+                "node": "IdentifierNode",
+                "line": 24,
+                "column": 8,
+                "name": "limite"
+              },
+              "right": {
+                "node": "LiteralNode",
+                "line": 24,
+                "column": 18,
+                "value": "1",
+                "literal_type": "int"
+              }
+            },
+            "then_block": {
+              "node": "BlockNode",
+              "line": 24,
+              "column": 21,
+              "statements": [
+                {
+                  "node": "AssignmentNode",
+                  "line": 25,
+                  "column": 8,
+                  "target": {
+                    "node": "IndexAccessNode",
+                    "line": 25,
+                    "column": 24,
+                    "target": {
+                      "node": "IdentifierNode",
+                      "line": 25,
+                      "column": 8,
+                      "name": "fibonacci_series"
+                    },
+                    "index": {
+                      "node": "LiteralNode",
+                      "line": 25,
+                      "column": 25,
+                      "value": "1",
+                      "literal_type": "int"
+                    }
+                  },
+                  "operator": "=",
+                  "value": {
+                    "node": "IdentifierNode",
+                    "line": 25,
+                    "column": 30,
+                    "name": "actual"
+                  }
+                },
+                {
+                  "node": "AssignmentNode",
+                  "line": 26,
+                  "column": 8,
+                  "target": {
+                    "node": "IdentifierNode",
+                    "line": 26,
+                    "column": 8,
+                    "name": "fibonacci_result"
+                  },
+                  "operator": "=",
+                  "value": {
+                    "node": "IdentifierNode",
+                    "line": 26,
+                    "column": 27,
+                    "name": "actual"
+                  }
+                }
+              ]
+            },
+            "elif_branches": [],
+            "else_block": null
+          },
+          {
+            "node": "WhileNode",
+            "line": 29,
+            "column": 4,
+            "condition": {
+              "node": "BinaryOpNode",
+              "line": 29,
+              "column": 11,
+              "operator": "<=",
+              "left": {
+                "node": "IdentifierNode",
+                "line": 29,
+                "column": 11,
+                "name": "i"
+              },
+              "right": {
+                "node": "IdentifierNode",
+                "line": 29,
+                "column": 16,
+                "name": "limite"
+              }
+            },
+            "body": {
+              "node": "BlockNode",
+              "line": 29,
+              "column": 24,
+              "statements": [
+                {
+                  "node": "AssignmentNode",
+                  "line": 30,
+                  "column": 8,
+                  "target": {
+                    "node": "IdentifierNode",
+                    "line": 30,
+                    "column": 8,
+                    "name": "siguiente"
+                  },
+                  "operator": "=",
+                  "value": {
+                    "node": "BinaryOpNode",
+                    "line": 30,
+                    "column": 20,
+                    "operator": "+",
+                    "left": {
+                      "node": "IdentifierNode",
+                      "line": 30,
+                      "column": 20,
+                      "name": "anterior"
+                    },
+                    "right": {
+                      "node": "IdentifierNode",
+                      "line": 30,
+                      "column": 31,
+                      "name": "actual"
+                    }
+                  }
+                },
+                {
+                  "node": "AssignmentNode",
+                  "line": 31,
+                  "column": 8,
+                  "target": {
+                    "node": "IndexAccessNode",
+                    "line": 31,
+                    "column": 24,
+                    "target": {
+                      "node": "IdentifierNode",
+                      "line": 31,
+                      "column": 8,
+                      "name": "fibonacci_series"
+                    },
+                    "index": {
+                      "node": "IdentifierNode",
+                      "line": 31,
+                      "column": 25,
+                      "name": "i"
+                    }
+                  },
+                  "operator": "=",
+                  "value": {
+                    "node": "IdentifierNode",
+                    "line": 31,
+                    "column": 30,
+                    "name": "siguiente"
+                  }
+                },
+                {
+                  "node": "AssignmentNode",
+                  "line": 33,
+                  "column": 8,
+                  "target": {
+                    "node": "IdentifierNode",
+                    "line": 33,
+                    "column": 8,
+                    "name": "anterior"
+                  },
+                  "operator": "=",
+                  "value": {
+                    "node": "IdentifierNode",
+                    "line": 33,
+                    "column": 19,
+                    "name": "actual"
+                  }
+                },
+                {
+                  "node": "AssignmentNode",
+                  "line": 34,
+                  "column": 8,
+                  "target": {
+                    "node": "IdentifierNode",
+                    "line": 34,
+                    "column": 8,
+                    "name": "actual"
+                  },
+                  "operator": "=",
+                  "value": {
+                    "node": "IdentifierNode",
+                    "line": 34,
+                    "column": 17,
+                    "name": "siguiente"
+                  }
+                },
+                {
+                  "node": "AssignmentNode",
+                  "line": 35,
+                  "column": 8,
+                  "target": {
+                    "node": "IdentifierNode",
+                    "line": 35,
+                    "column": 8,
+                    "name": "fibonacci_result"
+                  },
+                  "operator": "=",
+                  "value": {
+                    "node": "IdentifierNode",
+                    "line": 35,
+                    "column": 27,
+                    "name": "siguiente"
+                  }
+                },
+                {
+                  "node": "AssignmentNode",
+                  "line": 36,
+                  "column": 8,
+                  "target": {
+                    "node": "IdentifierNode",
+                    "line": 36,
+                    "column": 8,
+                    "name": "i"
+                  },
+                  "operator": "+=",
+                  "value": {
+                    "node": "LiteralNode",
+                    "line": 36,
+                    "column": 13,
+                    "value": "1",
+                    "literal_type": "int"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "node": "ReturnNode",
+            "line": 39,
+            "column": 4,
+            "value": {
+              "node": "IdentifierNode",
+              "line": 39,
+              "column": 8,
+              "name": "fibonacci_result"
+            }
+          }
+        ]
+      },
+      "secure": null
+    },
+    {
+      "node": "FunctionDeclNode",
+      "line": 42,
+      "column": 0,
+      "return_type": "int",
+      "name": "fibonacci",
+      "params": [
+        {
+          "node": "ParameterNode",
+          "line": 42,
+          "column": 19,
+          "param_type": "int",
+          "name": "n"
+        }
+      ],
+      "body": {
+        "node": "BlockNode",
+        "line": 42,
+        "column": 25,
+        "statements": [
+          {
+            "node": "VarDeclNode",
+            "line": 43,
+            "column": 4,
+            "var_type": "int",
+            "declarators": [
+              {
+                "node": "VarDeclaratorNode",
+                "line": 43,
+                "column": 8,
+                "name": "resultado",
+                "dimensions": [],
+                "initializer": {
+                  "node": "CallNode",
+                  "line": 43,
+                  "column": 33,
+                  "callee": {
+                    "node": "IdentifierNode",
+                    "line": 43,
+                    "column": 20,
+                    "name": "fibonacci_aux"
+                  },
+                  "arguments": [
+                    {
+                      "node": "IdentifierNode",
+                      "line": 43,
+                      "column": 34,
+                      "name": "n"
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "node": "ReturnNode",
+            "line": 44,
+            "column": 4,
+            "value": {
+              "node": "IdentifierNode",
+              "line": 44,
+              "column": 8,
+              "name": "resultado"
+            }
+          }
+        ]
+      },
+      "secure": null
+    },
+    {
+      "node": "FunctionDeclNode",
+      "line": 47,
+      "column": 0,
+      "return_type": "void",
+      "name": "main",
+      "params": [],
+      "body": {
+        "node": "BlockNode",
+        "line": 47,
+        "column": 16,
+        "statements": [
+          {
+            "node": "ExpressionStmtNode",
+            "line": 48,
+            "column": 4,
+            "expression": {
+              "node": "CallNode",
+              "line": 48,
+              "column": 13,
+              "callee": {
+                "node": "IdentifierNode",
+                "line": 48,
+                "column": 4,
+                "name": "fibonacci"
+              },
+              "arguments": [
+                {
+                  "node": "LiteralNode",
+                  "line": 48,
+                  "column": 14,
+                  "value": "10",
+                  "literal_type": "int"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "secure": null
+    }
+  ]
+}

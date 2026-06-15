@@ -1,0 +1,15 @@
+bloques suma:
+suma_B0:
+  t1 = a + b
+  return t1
+
+bloques main:
+main_B0:
+  t1 = 2
+  a = t1
+  t2 = 3
+  b = t2
+  param a
+  param b
+  t3 = call suma, 2
+  return t3

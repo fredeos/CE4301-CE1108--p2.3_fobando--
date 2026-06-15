@@ -1,0 +1,110 @@
+globals:
+  C
+
+func multiplicacion_matrices(A, B) -> int[2][2]
+  t1 = 2
+  filas = t1
+  t2 = 2
+  columnas = t2
+  t3 = 2
+  comun = t3
+  t4 = 0
+  total_operaciones = t4
+  t5 = 0
+  i = t5
+L1:
+  if i < filas goto L2
+  goto L3
+L2:
+  t9 = 0
+  j = t9
+L4:
+  if j < columnas goto L5
+  goto L6
+L5:
+  t12 = 0
+  suma = t12
+  t13 = 0
+  k = t13
+L7:
+  if k < comun goto L8
+  goto L9
+L8:
+  t17 = A[i]
+  t18 = t17[k]
+  t19 = B[k]
+  t20 = t19[j]
+  t21 = t18 * t20
+  t22 = suma + t21
+  suma = t22
+  t23 = 1
+  t24 = total_operaciones + t23
+  total_operaciones = t24
+L10:
+  t25 = 1
+  t26 = k + t25
+  k = t26
+  goto L7
+L9:
+  t27 = C[i]
+  t27[j] = suma
+L11:
+  t30 = 1
+  t31 = j + t30
+  j = t31
+  goto L4
+L6:
+L12:
+  t32 = 1
+  t33 = i + t32
+  i = t33
+  goto L1
+L3:
+  return C
+
+func main() -> int
+  t1 = 1
+  t2 = 0
+  t3 = A[t2]
+  t4 = 0
+  t3[t4] = t1
+  t5 = 2
+  t6 = 0
+  t7 = A[t6]
+  t8 = 1
+  t7[t8] = t5
+  t9 = 3
+  t10 = 1
+  t11 = A[t10]
+  t12 = 0
+  t11[t12] = t9
+  t13 = 4
+  t14 = 1
+  t15 = A[t14]
+  t16 = 1
+  t15[t16] = t13
+  t17 = 5
+  t18 = 0
+  t19 = B[t18]
+  t20 = 0
+  t19[t20] = t17
+  t21 = 6
+  t22 = 0
+  t23 = B[t22]
+  t24 = 1
+  t23[t24] = t21
+  t25 = 7
+  t26 = 1
+  t27 = B[t26]
+  t28 = 0
+  t27[t28] = t25
+  t29 = 8
+  t30 = 1
+  t31 = B[t30]
+  t32 = 1
+  t31[t32] = t29
+  param A
+  param B
+  call multiplicacion_matrices, 2
+  t33 = 0
+  return t33

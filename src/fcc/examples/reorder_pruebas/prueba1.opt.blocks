@@ -1,0 +1,57 @@
+bloques ajustar:
+ajustar_B0:
+  t1 = 2
+  t2 = 3
+  a = t1
+  b = t2
+  t3 = a + b
+  c = t3
+  t4 = n + c
+  return t4
+
+bloques main:
+main_B0:
+  succ: main_B1, main_if_next_2
+  t1 = 8
+  t2 = 4
+  t4 = 10
+  x = t1
+  y = t2
+  t3 = x + y
+  z = t3
+  t5 = z > t4
+  if_false t5 goto main_if_next_2
+
+main_B1:
+  pred: main_B0
+  t6 = 1
+  t7 = 2
+  p = t6
+  q = t7
+  t8 = p + q
+  r = t8
+  param r
+  t9 = call ajustar, 1
+  v = t9
+  return v
+
+main_B2:
+  succ: main_if_end_1
+  goto main_if_end_1
+
+main_if_next_2:
+  pred: main_B0
+  t10 = 5
+  t11 = 6
+  a = t10
+  b = t11
+  t12 = a * b
+  c = t12
+  param c
+  t13 = call ajustar, 1
+  w = t13
+  return w
+
+main_if_end_1:
+  pred: main_B2
+  return

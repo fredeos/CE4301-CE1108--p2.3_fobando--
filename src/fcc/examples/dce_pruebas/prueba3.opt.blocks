@@ -1,0 +1,37 @@
+bloques transformar:
+transformar_B0:
+  t1 = 3
+  t2 = v * t1
+  r = t2
+  return r
+
+bloques main:
+main_B0:
+  succ: main_while_cond_1
+  t1 = 0
+  i = t1
+  t2 = 0
+  total = t2
+
+main_while_cond_1:
+  pred: main_B0, main_B2
+  succ: main_B2, main_while_end_2
+  t6 = 4
+  t7 = i < t6
+  if_false t7 goto main_while_end_2
+
+main_B2:
+  pred: main_while_cond_1
+  succ: main_while_cond_1
+  param i
+  t8 = call transformar, 1
+  t12 = total + i
+  total = t12
+  t13 = 1
+  t14 = i + t13
+  i = t14
+  goto main_while_cond_1
+
+main_while_end_2:
+  pred: main_while_cond_1
+  return total

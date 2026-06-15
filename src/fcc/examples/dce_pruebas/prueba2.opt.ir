@@ -1,0 +1,22 @@
+func sumarUno(a) -> int
+  t1 = 1
+  t2 = a + t1
+  r = t2
+  return r
+
+func duplicar(b) -> int
+  t1 = 2
+  t2 = b * t1
+  r = t2
+  return r
+
+func main() -> int
+  t1 = 3
+  x = t1
+  t2 = 4
+  y = t2
+  param x
+  t3 = call sumarUno, 1
+  param y
+  t7 = call duplicar, 1
+  return x

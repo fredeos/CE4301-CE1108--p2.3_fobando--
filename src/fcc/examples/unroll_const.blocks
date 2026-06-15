@@ -1,0 +1,100 @@
+bloques main:
+main_B0:
+  succ: main_while_cond_1
+  t1 = 0
+  k = t1
+  t2 = 2
+  t3 = 0
+  a[t3] = t2
+  t4 = 4
+  t5 = 1
+  a[t5] = t4
+  t6 = 6
+  t7 = 2
+  a[t7] = t6
+  t8 = 8
+  t9 = 3
+  a[t9] = t8
+  t10 = 10
+  t11 = 4
+  a[t11] = t10
+  t12 = 12
+  t13 = 5
+  a[t13] = t12
+  t14 = 14
+  t15 = 6
+  a[t15] = t14
+  t16 = 16
+  t17 = 7
+  a[t17] = t16
+  t18 = 1
+  t19 = 0
+  b[t19] = t18
+  t20 = 3
+  t21 = 1
+  b[t21] = t20
+  t22 = 5
+  t23 = 2
+  b[t23] = t22
+  t24 = 7
+  t25 = 3
+  b[t25] = t24
+  t26 = 9
+  t27 = 4
+  b[t27] = t26
+  t28 = 11
+  t29 = 5
+  b[t29] = t28
+  t30 = 13
+  t31 = 6
+  b[t31] = t30
+  t32 = 15
+  t33 = 7
+  b[t33] = t32
+
+main_while_cond_1:
+  pred: main_B0, main_B2
+  succ: main_B2, main_while_end_2
+  t34 = 8
+  t35 = k < t34
+  if_false t35 goto main_while_end_2
+
+main_B2:
+  pred: main_while_cond_1
+  succ: main_while_cond_1
+  t36 = a[k]
+  t37 = b[k]
+  t38 = t36 + t37
+  c[k] = t38
+  t39 = 1
+  t40 = k + t39
+  k = t40
+  goto main_while_cond_1
+
+main_while_end_2:
+  pred: main_while_cond_1
+  t41 = 0
+  t42 = c[t41]
+  t43 = 1
+  t44 = c[t43]
+  t45 = t42 + t44
+  t46 = 2
+  t47 = c[t46]
+  t48 = t45 + t47
+  t49 = 3
+  t50 = c[t49]
+  t51 = t48 + t50
+  t52 = 4
+  t53 = c[t52]
+  t54 = t51 + t53
+  t55 = 5
+  t56 = c[t55]
+  t57 = t54 + t56
+  t58 = 6
+  t59 = c[t58]
+  t60 = t57 + t59
+  t61 = 7
+  t62 = c[t61]
+  t63 = t60 + t62
+  resultado_constante = t63
+  return resultado_constante

@@ -1,0 +1,19 @@
+digraph CFG {
+  "analizar_sensor_reordenado_B0";
+  "analizar_sensor_reordenado_while_cond_1";
+  "analizar_sensor_reordenado_B2";
+  "analizar_sensor_reordenado_B3";
+  "analizar_sensor_reordenado_if_next_4";
+  "analizar_sensor_reordenado_if_end_3";
+  "analizar_sensor_reordenado_while_end_2";
+  "main_B0";
+  "analizar_sensor_reordenado_B0" -> "analizar_sensor_reordenado_while_cond_1";
+  "analizar_sensor_reordenado_while_cond_1" -> "analizar_sensor_reordenado_while_end_2" [label="t3 == 0"];
+  "analizar_sensor_reordenado_while_cond_1" -> "analizar_sensor_reordenado_B2" [label="t3 != 0"];
+  "analizar_sensor_reordenado_B2" -> "analizar_sensor_reordenado_if_next_4" [label="t14 == 0"];
+  "analizar_sensor_reordenado_B2" -> "analizar_sensor_reordenado_B3" [label="t14 != 0"];
+  "analizar_sensor_reordenado_B3" -> "analizar_sensor_reordenado_if_end_3";
+  "analizar_sensor_reordenado_if_next_4" -> "analizar_sensor_reordenado_if_end_3";
+  "analizar_sensor_reordenado_if_end_3" -> "analizar_sensor_reordenado_while_cond_1";
+  "main_B0" -> "analizar_sensor_reordenado_B0";
+}
