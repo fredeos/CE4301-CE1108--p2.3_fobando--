@@ -145,9 +145,12 @@ module pmu #(
     input  logic cache_search_ready,
 
     // --- Señales para contar instrucciones ---
-    input [31:0] wb_instr,
-    input wb_en,
-    input wb_end_program,
+    input logic [31:0] wb_instr,
+    input logic wb_en,
+    input logic wb_end_program,
+
+    // --- Señales para contar stalls por branches ---
+    input logic event_branch_taken,
 
 
     // ------------------------------------------------------------------
@@ -177,7 +180,8 @@ module pmu #(
     logic [COUNTER_WIDTH-1:0] val_total_l2_accesses;    // Accessos en L2
     logic [COUNTER_WIDTH-1:0] val_total_mem_accesses;    // Accessos a Memoria
     logic [COUNTER_WIDTH-1:0] val_total_inst_count;       //Instrucciones totales
-
+    logic [COUNTER_WIDTH-1:0] val_total_branch_stalls;    //Stalls por riesgos de control
+    
     // ================================================================
     // DETECCIÓN DE FLANCO DE SUBIDA
     // ================================================================
@@ -203,6 +207,7 @@ module pmu #(
     logic prev_l2_read_acc;    // Estado de event_cache_l2_read_access  en el ciclo anterior
     logic prev_mem_write_acc;  // Estado de event_mem_write_access en el ciclo anterior
     logic prev_mem_read_acc;   // Estado de event_mem_read_access  en el ciclo anterior
+    logic prev_branch_taken;
 
     // Flancos de subida (rise = rising edge):
     // rise_XY = 1 únicamente el primer ciclo que event_XY pasa de 0 a 1.
@@ -223,6 +228,8 @@ module pmu #(
     wire rise_l2_read_acc   = event_cache_l2_read_access  & ~prev_l2_read_acc;
     wire rise_mem_write_acc = event_mem_write_access       & ~prev_mem_write_acc;
     wire rise_mem_read_acc  = event_mem_read_access        & ~prev_mem_read_acc;
+
+    wire rise_branch_taken = event_branch_taken & ~prev_branch_taken;
     
 
     // ================================================================
@@ -344,6 +351,8 @@ module pmu #(
             val_total_l1_accesses     <= '0;
             val_total_l2_accesses     <= '0;
             val_total_mem_accesses    <= '0;
+            val_total_branch_stalls <= '0;
+
 
             // Reset de registros de estado previo para la detección de flanco.
             // Se ponen a 0 para que si la señal ya está en 1 al salir del
@@ -358,6 +367,7 @@ module pmu #(
             prev_l2_read_acc   <= 1'b0;
             prev_mem_write_acc <= 1'b0;
             prev_mem_read_acc  <= 1'b0;
+            prev_branch_taken <= 1'b0;
 
         end else begin
 
@@ -379,6 +389,8 @@ module pmu #(
             prev_mem_write_acc <= event_mem_write_access;
             prev_mem_read_acc  <= event_mem_read_access;
 
+            prev_branch_taken <= event_branch_taken;
+
             // --------------------------------------------------------------
             // Paso 2: Incrementar contadores individuales de miss.
             // Cada contador hoja (por tipo de miss) tiene una única señal
@@ -394,6 +406,10 @@ module pmu #(
             if (rise_l1w) val_total_l1_write_misses <= val_total_l1_write_misses + 1'b1;
             if (rise_l2r) val_total_l2_read_misses  <= val_total_l2_read_misses  + 1'b1;
             if (rise_l2w) val_total_l2_write_misses <= val_total_l2_write_misses + 1'b1;
+
+            if (rise_branch_taken) begin
+            val_total_branch_stalls <= val_total_branch_stalls + 32'd3;
+            end
 
             // --------------------------------------------------------------
             // Paso 3: Incrementar contadores agregados usando deltas.
@@ -458,6 +474,7 @@ module pmu #(
             5'd9:  read_data = val_total_l2_accesses;
             5'd10: read_data = val_total_mem_accesses;
             5'd11: read_data = val_total_inst_count;
+            5'd12: read_data = val_total_branch_stalls;
             default: read_data = '0;
         endcase
     end

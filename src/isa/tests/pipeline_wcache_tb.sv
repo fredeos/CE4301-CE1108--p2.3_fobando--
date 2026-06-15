@@ -153,6 +153,9 @@ module pipeline_wcache_tb ();
         ipc = real'(total_instr) / real'(total_cycles);
         $display("IPC                       : %0.3f", ipc);
 
+        force _cpu._pmu.read_addr = 5'd12; @(posedge clk); #1;
+        pmu_val = _cpu._pmu.read_data;
+        $display("Total Stalls for control  : %0d", pmu_val);
 
         force _cpu._pmu.read_addr = 5'd10; @(posedge clk); #1;
         pmu_val = _cpu._pmu.read_data;

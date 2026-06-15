@@ -529,6 +529,7 @@ module pipeline_wcache ( // Pipeline de 5 etapas para arquitectura RISC: F32IS
         .event_cache_l2_read_access(cache_l2_read_access),
         .event_mem_write_access(cache_M_write_access),
         .event_mem_read_access(cache_M_read_access),
+        .event_branch_taken(MEM_PCSrc[0] | MEM_PCSrc[1] | WB_PCSrc),
 
         .cache_search_ready(cache_search_ready),
 
