@@ -1,121 +1,133 @@
 #////////////////////////////////////////////////////////////////////////////////
+CPU_SRC = ./src/isa
+GEN = ./gen
+OUT = ./output
+DIRS = ${GEN} ${OUT}
+
 # --- Directorios de unidades de control ---
-dirCONTROL = ./src/control
-dirCONTROLtb = ${dirCONTROL}/tests
+CONTROL = ${CPU_SRC}/control
+
+ADMIN = ${CPU_SRC}/admin
+
+CONDUNIT = ${CPU_SRC}/cond
+
+SSU = ${CPU_SRC}/ssu
 
 # --- Directorios de memorias ---
-dirINSTRMEM = ./src/instrmem
-dirINSTRMEMtb = ${dirINSTRMEM}/tests
+INSTRMEM = ${CPU_SRC}/instrmem
 
-dirDATAMEM = ./src/datamem
-dirDATAMEMtb = ${dirDATAMEM}/tests
+DATAMEM = ${CPU_SRC}/datamem
 
-dirVAULT = ./src/vault
-dirVAULTtb = ${dirVAULT}/tests
+CACHE = ${CPU_SRC}/cache
+
+PMU = ${CPU_SRC}/pmu
+
+PACKEDM = ${CPU_SRC}/packed_mem
+
+VAULT = ${CPU_SRC}/vault
 
 # --- Directorios de bancos registros ---
-dirREGFILE = ./src/regfile
-dirREGFILEtb = ${dirREGFILE}/tests
+REGFILE = ${CPU_SRC}/regfile
 
-dirSECMEM = ./src/secmem
-dirSECMEMtb = ${dirSECMEM}/tests
+SECMEM = ${CPU_SRC}/secmem
 
 # --- Directorios de ALUs y Hazard Unit ---
-dirALU = ./src/alu
-dirALUtb = ${dirALU}/tests
+ALU = ${CPU_SRC}/alu
 
-dirHAZARD = ./src/hazard
-dirHAZARDtb = ${dirHAZARD}/tests
+HAZARD = ${CPU_SRC}/hazard
 
 # --- Directorio del datapath y extension de inmediatos ---
-dirDATAPATH = ./src/datapath
-dirDATAPATHtb = ${dirDATAPATH}/tests
+IMMEXT = ${CPU_SRC}/imm_ext
 
 #////////////////////////////////////////////////////////////////////////////////
 # --- Archivos de codigo fuente para ejecutar pruebas ---
-
-control_unit = ${dirCONTROL}/control_unit.sv ${dirCONTROL}/branch_decoder.sv ${dirCONTROL}/main_decoder.sv ${dirCONTROL}/alu_decoder.sv # unidad de control
-admin_unit = ${dirCONTROL}/admin_unit.sv ${dirCONTROL}/cycle_comparer.sv	# unidad de administrador (sessiones de hardware seguro)
-cond_unit = ${dirCONTROL}/cond_unit.sv	# unidad de condicionales y saltos (cambios al PC)
-ssu = ${dirCONTROL}/ssu.sv				# unidad de seleccion segura (instrucciones @)
-
-cpu = ${dirDATAPATH}/*.sv ${dirCONTROL}/*.sv ${dirINSTRMEM}/*.sv ${dirDATAMEM}/*.sv ${dirVAULT}/*.sv ${dirREGFILE}/*.sv ${dirSECMEM}/*.sv ${dirALU}/*.sv ${dirHAZARD}/hazard_unit.sv # compilar todos los modulos del procesador
+MODS = ${CONTROL}/*.sv ${ADMIN}/*.sv ${CONDUNIT}/*.sv ${SSU}/*.sv \
+       ${INSTRMEM}/*.sv ${DATAMEM}/*.sv ${VAULT}/*.sv ${REGFILE}/*.sv \
+       ${SECMEM}/*.sv ${ALU}/*.sv ${HAZARD}/*.sv ${IMMEXT}/*.sv \
+       ${CACHE}/*.sv ${PACKEDM}/*.sv ${PMU}/*.sv
 
 #////////////////////////////////////////////////////////////////////////////////
+TARGET = pipeline
+CONFIG = default
+
 # --- Makefile ---
-top:
-	mkdir -p ./output
-	iverilog -g2012 -o ./output/sim.out ./src/top.sv ./src/tb_top.sv
 
-ControlUnit:
-	mkdir -p ./output
-	iverilog -g2012 -o ./output/sim.out ${control_unit} ${dirCONTROLtb}/tb_control_unit.sv
+# + Modulos individuales
+control_unit: dirs
+	iverilog -g2012 -o ${GEN}/$@.out ${CONTROL}/*.sv ${CONTROL}/tests/*.sv
 
-CondUnit:
-	mkdir -p ./output
-	iverilog -g2012 -o ./output/sim.out ${cond_unit} ${dirCONTROLtb}/tb_cond_unit.sv
+admin_unit: dirs
+	iverilog -g2012 -o ${GEN}/$@.out ${ADMIN}/*.sv ${ADMIN}/tests/*.sv
 
-AdminUnit:
-	mkdir -p ./output
-	iverilog -g2012 -o ./output/sim.out ${admin_unit} ${dirCONTROLtb}/tb_admin_unit.sv
+cond_unit: dirs
+	iverilog -g2012 -o ${GEN}/$@.out ${CONDUNIT}/*.sv ${CONDUNIT}/tests/*.sv
 
-SSU:
-	mkdir -p ./output
-	iverilog -g2012 -o ./output/sim.out ${ssu} ${dirCONTROLtb}/tb_ssu.sv
+ssu: dirs
+	iverilog -g2012 -o ${GEN}/$@.out ${SSU}/*.sv ${SSU}/tests/*.sv
 
-SecureMemory:
-	mkdir -p ./output
-	iverilog -g2012 -o ./output/sim.out ${dirSECMEM}/secure_memory.sv ${dirSECMEMtb}/tb_secure_memory.sv
+instrmem: dirs
+	iverilog -g2012 -o ${GEN}/$@.out ${INSTRMEM}/*.sv ${INSTRMEM}/tests/*.sv
 
-RegFile:
-	mkdir -p ./output
-	iverilog -g2012 -o ./output/sim.out ${dirREGFILE}/register_file.sv ${dirREGFILEtb}/tb_register_file.sv
+cache: dirs
+	iverilog -g2012 -o ${GEN}/$@.out ${CACHE}/*.sv ${CACHE}/tests/*.sv
 
-Hazard:
-	mkdir -p ./output
-	iverilog -g2012 -o ./output/sim.out ${dirHAZARD}/hazard_unit.sv ${dirHAZARDtb}/tb_hazard_unit.sv
+datamem: dirs
+	iverilog -g2012 -o ${GEN}/$@.out ${DATAMEM}/*.sv ${DATAMEM}/tests/*.sv
 
-InstructionMemory:
-	mkdir -p ./output
-	iverilog -g2012 -o ./output/sim.out ${dirINSTRMEM}/instruction_memory.sv ${dirINSTRMEMtb}/instruction_memory_tb.sv
+packed_mem: dirs
+	iverilog -g2012 -o ${GEN}/$@.out ${PACKEDM}/*.sv ${CACHE}/*.sv ${DATAMEM}/*.sv ${PACKEDM}/tests/*.sv
 
-DataMemory:
-	mkdir -p ./output
-	iverilog -g2012 -o ./output/sim.out ${dirDATAMEM}/data_memory.sv ${dirDATAMEMtb}/data_memory_tb.sv
+vault: dirs
+	iverilog -g2012 -o ${GEN}/$@.out ${VAULT}/*.sv ${VAULT}/tests/*.sv
 
-Vault:
-	mkdir -p ./output
-	iverilog -g2012 -o ./output/sim.out ${dirVAULT}/vault.sv ${dirVAULTtb}/vault_tb.sv
+regfile: dirs
+	iverilog -g2012 -o ${GEN}/$@.out ${REGFILE}/*.sv ${REGFILE}/tests/*.sv
 
-pALU:
-	mkdir -p ./output
-	iverilog -g2012 -o ./output/sim.out ${dirALU}/pALU.sv ${dirALUtb}/pALU_tb.sv
+secmem: dirs
+	iverilog -g2012 -o ${GEN}/$@.out ${SECMEM}/*.sv ${SECMEM}/tests/*.sv
 
-sALU:
-	mkdir -p ./output
-	iverilog -g2012 -o ./output/sim.out ${dirALU}/sALU.sv ${dirALUtb}/sALU_tb.sv
+pALU: dirs
+	iverilog -g2012 -o ${GEN}/$@.out ${ALU}/pALU.sv ${ALU}/tests/pALU_tb.sv
 
-ImmExt:
-	mkdir -p ./output
-	iverilog -g2012 -o ./output/sim.out ${dirDATAPATH}/imm_ext32.sv ${dirDATAPATHtb}/tb_imm_ext.sv
+sALU: dirs
+	iverilog -g2012 -o ${GEN}/$@.out ${ALU}/sALU.sv ${ALU}/tests/sALU_tb.sv
 
-Datapath:
-	mkdir -p ./output
-	iverilog -g2012 -o ./output/sim.out ${cpu} ${dirDATAPATHtb}/tb_datapath.sv
+hazard_unit: dirs
+	iverilog -g2012 -o ${GEN}/$@.out ${HAZARD}/*.sv ${HAZARD}/tests/*.sv
 
+imm_ext: dirs
+	iverilog -g2012 -o ${GEN}/$@.out ${IMMEXT}/*.sv ${IMMEXT}/tests/*.sv
+
+# + Procesadores con pipeline
+pipeline: dirs
+	iverilog -g2012 -o ${GEN}/$@.out ${CPU_SRC}/$@.sv ${MODS} ${CPU_SRC}/tests/$@_tb.sv
+
+	
+pipeline_wcache: dirs
+	iverilog -g2012 -o ${GEN}/$@.out \
+	${CPU_SRC}/pipeline_wcache.sv \
+	${MODS} \
+	${CPU_SRC}/tests/pipeline_wcache_tb.sv
+
+# + Reglas varias
 run:
-	vvp ./output/sim.out
-	gtkwave ./output/wave.vcd
+	vvp ${GEN}/$(TARGET).out 
+	gtkwave ${GEN}/$(TARGET).vcd ./config/$(CONFIG).gtkw
 
-run-config:
-	vvp ./output/sim.out
-	gtkwave ./output/wave.vcd ./output/$(TARGET).gtkw
-
-pyload-mem:
+payload-mem:
 	python src/load_file.py --input input/$(INPUT) --output src/$(OUTPUT) --address $(ADDRESS)
 
 pyextract-data:
 	python src/extract_data.py --memory output/$(INPUT) --address $(ADDRESS) --size $(SIZE) --output output/$(OUTPUT)
 
+dirs:
+	mkdir -p ${DIRS}
+
 clean:
 	rm ./output/**
+	rm ./gen/**
+
+test:
+	@echo "El makefile esta funcionando"
+
+.PHONY: dirs clean

@@ -45,6 +45,8 @@ module tb_hazard_unit;
     logic [1:0] RD2SrcEX;
     logic [1:0] RD3SrcEX;
 
+    logic cache_search_ready;
+
     int pass_count;
 
     hazard_unit dut (
@@ -55,6 +57,7 @@ module tb_hazard_unit;
         .branch_taken(branch_taken),
         .mem_busy(mem_busy),
         .wb_busy(wb_busy),
+        .cache_search_ready(cache_search_ready),
         .StallIF(StallIF),
         .FlushIF(FlushIF),
         .StallID(StallID),
@@ -142,6 +145,7 @@ module tb_hazard_unit;
             branch_taken = 1'b0;
             mem_busy = 1'b0;
             wb_busy = 1'b0;
+            cache_search_ready = 1'b1;
             #1;
         end
     endtask
@@ -197,9 +201,9 @@ module tb_hazard_unit;
                       "sin_hazard");
 
         clear_inputs();
-        EXInstr  = enc_normal(OP_R, ALU_ADD, 5'd9, 5'd3, 5'd4);
+        EXInstr  = enc_normal(OP_R, ALU_ADD, 5'd9, 5'd3, 5'd6);
         MEMInstr = enc_normal(OP_I, ALU_ADD, 5'd3, 5'd1, 5'd0);
-        WBInstr  = enc_normal(OP_I, ALU_ADD, 5'd4, 5'd2, 5'd0);
+        WBInstr  = enc_normal(OP_I, ALU_ADD, 5'd6, 5'd2, 5'd0);
         #1;
         check_outputs(1'b0, 1'b0, 1'b0, 1'b0, 1'b0, 1'b0, 1'b0,
                       SRC_ALU, SRC_WB, SRC_PIPE,
@@ -375,7 +379,7 @@ module tb_hazard_unit;
         IDInstr = enc_normal(OP_B, COND_BEQ, 5'd0, 5'd5, 5'd3);
         branch_taken = 1'b1;
         #1;
-        check_outputs(1'b0, 1'b1, 1'b0, 1'b1, 1'b0, 1'b0, 1'b0,
+        check_outputs(1'b0, 1'b0, 1'b0, 1'b1, 1'b1, 1'b0, 1'b0,
                       SRC_PIPE, SRC_PIPE, SRC_PIPE,
                       "branch_tiene_prioridad_sobre_load_use");
 
@@ -390,7 +394,7 @@ module tb_hazard_unit;
         clear_inputs();
         wb_busy = 1'b1;
         #1;
-        check_outputs(1'b1, 1'b0, 1'b1, 1'b0, 1'b0, 1'b0, 1'b1,
+        check_outputs(1'b1, 1'b0, 1'b1, 1'b0, 1'b0, 1'b1, 1'b1,
                       SRC_PIPE, SRC_PIPE, SRC_PIPE,
                       "wb_busy_stall");
 
@@ -398,7 +402,7 @@ module tb_hazard_unit;
         branch_taken = 1'b1;
         wb_busy = 1'b1;
         #1;
-        check_outputs(1'b1, 1'b0, 1'b1, 1'b0, 1'b0, 1'b0, 1'b1,
+        check_outputs(1'b1, 1'b0, 1'b1, 1'b0, 1'b0, 1'b1, 1'b1,
                       SRC_PIPE, SRC_PIPE, SRC_PIPE,
                       "wb_busy_tiene_prioridad_sobre_branch");
 
@@ -425,6 +429,49 @@ module tb_hazard_unit;
         check_outputs(1'b0, 1'b0, 1'b0, 1'b0, 1'b0, 1'b0, 1'b0,
                       SRC_ALU, SRC_PIPE, SRC_PIPE,
                       "send_forward_a_registro_seguro");
+
+        // ─── CASOS: cache_search_ready ───────────────────────────────────────────────
+
+        // Caso 1: cache_search_ready en 0 sola, sin otra condición.
+        // Espera: todo el pipeline stallado, sin flushes.
+        clear_inputs();
+        cache_search_ready = 1'b0;
+        #1;
+        check_outputs(1'b1, 1'b0, 1'b1, 1'b0, 1'b0, 1'b1, 1'b0,
+                    SRC_PIPE, SRC_PIPE, SRC_PIPE,
+                    "cache_not_ready_stall_total");
+
+        // Caso 2: cache_search_ready lista, mem_busy en 0.
+        // Este es el caso "feliz": no debe haber ningún stall ni flush.
+        // Sirve como control para verificar que la señal no rompe el caso normal.
+        clear_inputs();
+        cache_search_ready = 1'b1;
+        #1;
+        check_outputs(1'b0, 1'b0, 1'b0, 1'b0, 1'b0, 1'b0, 1'b0,
+                    SRC_PIPE, SRC_PIPE, SRC_PIPE,
+                    "cache_ready_sin_otros_hazards");
+
+        // Caso 3: cache_search_ready en 0 Y branch_taken al mismo tiempo.
+        // La cache tiene prioridad: se stallean todas las etapas y NO se flushea nada.
+        // Verifica que el stall de cache aplasta correctamente al branch flush.
+        clear_inputs();
+        cache_search_ready = 1'b0;
+        branch_taken = 1'b1;
+        #1;
+        check_outputs(1'b1, 1'b0, 1'b1, 1'b0, 1'b0, 1'b1, 1'b0,
+                    SRC_PIPE, SRC_PIPE, SRC_PIPE,
+                    "cache_not_ready_tiene_prioridad_sobre_branch");
+
+        // Caso 4: cache_search_ready en 0 Y mem_busy al mismo tiempo.
+        // Ambas condiciones activas a la vez (el || del always_comb las une).
+        // Resultado identico al caso 1: todo stallado.
+        clear_inputs();
+        cache_search_ready = 1'b0;
+        mem_busy = 1'b1;
+        #1;
+        check_outputs(1'b1, 1'b0, 1'b1, 1'b0, 1'b0, 1'b1, 1'b0,
+                    SRC_PIPE, SRC_PIPE, SRC_PIPE,
+                    "cache_not_ready_y_mem_busy_simultaneous");
 
         $display("Todas las pruebas de hazard_unit pasaron: %0d casos", pass_count);
         $finish;

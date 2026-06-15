@@ -3,21 +3,26 @@ func factorial(a) -> int
   resultado = t1
   t2 = 1
   i = t2
+  t3 = 15
+  m = t3
+  t4 = 16
+  t5 = m + t4
+  m = t5
 L1:
   if i <= a goto L2
   goto L3
 L2:
-  t4 = resultado * i
-  resultado = t4
-  t5 = 1
-  t6 = i + t5
-  i = t6
+  t7 = resultado * i
+  resultado = t7
+  t8 = 1
+  t9 = i + t8
+  i = t9
   goto L1
 L3:
   return resultado
 
-func main() -> int
-  t1 = 8
+func main() -> void
+  t1 = 2
   param t1
-  t2 = call factorial, 1
-  return t2
+  call factorial, 1
+  return

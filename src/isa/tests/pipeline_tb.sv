@@ -1,6 +1,6 @@
 `timescale 1ms / 1ps
 
-module tb_datapath ();
+module pipeline_tb ();
     logic clk, rst;
 
     int cycles = 120000;
@@ -10,14 +10,14 @@ module tb_datapath ();
     always #5 clk = ~clk;
     always_ff @(posedge clk) cycle <= cycle + 1;
 
-    datapath _cpu (
+    pipeline _cpu (
         .clk(clk), 
         .rst(rst)
     );
 
     initial begin 
-        $dumpfile("./output/wave.vcd");
-        $dumpvars(0, tb_datapath);
+        $dumpfile("./gen/pipeline.vcd");
+        $dumpvars(0, pipeline_tb);
         $display("[Inicio del testbench]");
         if ($value$plusargs("CYCLES=%d", cycles)) begin
             $display("[SISTEMA] Ciclos configurados por plusarg: %0d", cycles);

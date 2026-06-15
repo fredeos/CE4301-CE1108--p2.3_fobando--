@@ -44,7 +44,7 @@ module tb_secure_memory;
     endtask
 
     initial begin
-        $dumpfile("./output/wave.vcd");
+        $dumpfile("./gen/secmem.vcd");
         $dumpvars(0, tb_secure_memory);
 
         clk  = 0;

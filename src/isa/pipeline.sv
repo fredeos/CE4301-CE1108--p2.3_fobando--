@@ -1,4 +1,4 @@
-module datapath ( // Pipeline de 5 etapas para arquitectura RISC: F32IS
+module pipeline ( // Pipeline de 5 etapas para arquitectura RISC: F32IS
     input logic clk, rst
 );
     localparam MEM_SIZE_KB = 64;
@@ -378,6 +378,7 @@ module datapath ( // Pipeline de 5 etapas para arquitectura RISC: F32IS
         .ALUOut(MEM_ALUOut), .DataOutWB(WB_DataOut),
         .branch_taken(MEM_PCSrc[0] | MEM_PCSrc[1] | WB_PCSrc),
         .mem_busy(1'b0),
+        .cache_search_ready(cache_search_ready),
         .wb_busy(1'b0),
         .StallIF(IF_EN), .FlushIF(IF_CLR),
         .StallID(ID_EN), .FlushID(ID_CLR),
@@ -387,4 +388,5 @@ module datapath ( // Pipeline de 5 etapas para arquitectura RISC: F32IS
         .RD1SrcEX(EX_Op1Sel), .RD2SrcEX(EX_Op2Sel), .RD3SrcEX(EX_Op3Sel),
         .RD1FwdEX(EX_Op1Fwd), .RD2FwdEX(EX_Op2Fwd), .RD3FwdEX(EX_Op3Fwd)
     );
+
 endmodule

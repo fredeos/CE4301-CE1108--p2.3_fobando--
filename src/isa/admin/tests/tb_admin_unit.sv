@@ -13,7 +13,7 @@ module tb_admin_unit ();
 
     always #5 clk = ~clk;
     initial begin
-        $dumpfile("./output/wave.vcd");
+        $dumpfile("./gen/admin_unit.vcd");
         $dumpvars(0, tb_admin_unit);
         $display("[Inicio del testbench]");
 

@@ -951,9 +951,8 @@ class AssemblyGenerator:
             if isinstance(decl, FunctionDeclNode):
                 self._emit_function(decl)
 
-        if not self.emit_entrypoint:
-            # Sin __init__, end queda al final fisico del stream generado.
-            self._emit_end_marker()
+        # end marca el cierre fisico y debe quedar despues de todo el codigo.
+        self._emit_end_marker(comment="cierre fisico del stream de instrucciones")
 
     def _emit_end_marker(self, comment: Optional[str] = None):
         """Emite el relleno obligatorio y la marca end final."""

@@ -13,7 +13,6 @@ func int factorial(int a){
     ret resultado;
 }
 
-
-func int main(){
-    ret factorial(8);
+func void main(){
+    factorial(2);
 }

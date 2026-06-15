@@ -29,7 +29,7 @@ module instruction_memory #(
             INSTRUCTIONS[i] = 32'h00000080; // nop
         end
         // Load the program from the HEX file
-        $readmemh("./src/instrmem/instr_mem.hex", INSTRUCTIONS);
+        $readmemh("./src/isa/instrmem/instr_mem.hex", INSTRUCTIONS);
     end
 
     // --- Asynchronous Instruction Fetch ---

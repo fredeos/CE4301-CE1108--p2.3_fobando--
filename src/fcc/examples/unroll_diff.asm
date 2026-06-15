@@ -520,3 +520,4 @@ main_while_end_2:    # addr=1244
     ldw ra, +0(sp)
     addi sp, sp, -572
     ret
+    end

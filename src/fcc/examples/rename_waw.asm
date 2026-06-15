@@ -57,3 +57,4 @@ main:    # addr=24
     ldw ra, +0(sp)
     addi sp, sp, -72
     ret
+    end

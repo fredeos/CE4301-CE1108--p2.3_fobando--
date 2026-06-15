@@ -45,7 +45,7 @@ module tb_register_file;
     endtask
 
     initial begin
-        $dumpfile("./output/wave.vcd");
+        $dumpfile("./gen/regfile.vcd");
         $dumpvars(0, tb_register_file);
 
         clk    = 0;

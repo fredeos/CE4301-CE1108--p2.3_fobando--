@@ -102,9 +102,8 @@ class IRAssemblyGenerator(AssemblyGenerator):
             # Se emiten todas las funciones despues del punto de entrada.
             self._emit_ir_function(function)
 
-        if not self.emit_entrypoint:
-            # Sin __init__, end queda al final fisico del stream generado.
-            self._emit_end_marker()
+        # end marca el cierre fisico y debe quedar despues de todo el codigo IR.
+        self._emit_end_marker(comment="cierre fisico del stream IR")
 
     def _emit_end_marker(self, comment: Optional[str] = None):
         """Entradas: comentario opcional. Salida: 3 nop y end. Uso: cierre ASM."""

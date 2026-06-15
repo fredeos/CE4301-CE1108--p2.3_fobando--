@@ -22,7 +22,7 @@ module vault_tb;
     endtask
 
     initial begin
-        $dumpfile("./output/wave.vcd");   // nombre del archivo
+        $dumpfile("./gen/vault.vcd");   // nombre del archivo
         $dumpvars(0, vault_tb);         // qué señales guardar
         CLK = 0; RST = 0; WE = 0;
         A = 0; WD = 0; ASM = 4'b0000;

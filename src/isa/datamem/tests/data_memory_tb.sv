@@ -1,108 +1,122 @@
-`timescale 1ns / 1ps
-
 module data_memory_tb();
+    localparam int LAT = 8;
 
-    // Parámetros
-    localparam int MEM_SIZE_KB = 1; 
-    
-    // Señales del DUT
-    logic        CLK;
-    logic        RST;
-    logic [31:0] A;
-    logic        WE;
-    logic [3:0]  ASM;
-    logic [31:0] WD;
-    logic [31:0] RD;
+    logic clk, rst;
+
+    logic re, we, w_ready, r_ready;
+    logic [3:0] bm;
+    logic [31:0] addr, wd, rd;
+
+    logic [31:0] burst_addr [0:1];
+    logic [1:0][31:0] burst1, burst2;
 
     // Instancia del módulo (DUT)
-    data_memory #(
-        .MEM_SIZE_KB(MEM_SIZE_KB)
-    ) dut (
-        .CLK(CLK), .RST(RST), .A(A), .WE(WE), .ASM(ASM), .WD(WD), .RD(RD)
+    data_memory #(.SIZE(128), .LATENCY(8), .WPL(2)) _dut (
+        .CLK(clk), .RST(rst),
+        .WE(we), .WBM(bm), .WA(addr), .WD(wd),
+        .RE(re), .RBM(bm), .RA(addr), .RD(rd),
+        .ready({w_ready, r_ready}),
+        .burst1_addr(burst_addr[0]), .burst2_addr(burst_addr[1]),
+        .burst1(burst1), .burst2(burst2)
     );
 
     // Reloj a 100MHz
-    always #5 CLK = (CLK === 1'b0);
+    always #5 clk = ~clk;
 
     initial begin
-        $dumpfile("./output/wave.vcd");
+        $dumpfile("./gen/datamem.vcd");
         $dumpvars(0, data_memory_tb);
-        // --- 1. Reset y Estabilización ---
-        CLK = 0;
-        RST = 1;
-        A = 0; WE = 0; ASM = 0; WD = 0;
-        #20 RST = 0;
-        
-        $display("Iniciando Testbench Corregido...");
+        // --- Inicialización ---
+        addr = '0; wd = '0;
+        bm = 4'b0000;
+        re = 1'b0; we = 1'b0;
+        clk = 1'b0; 
+        rst = 1'b1; #10; rst = 1'b0;
+        // --- Pruebas de lectura ---
+        $display("\n-------------------[Pruebas de lectura]-------------------");
+        // 1. Lectura de palabra completa
+        $display("\n<< Lectura de palabra completa >>");
+        task_read(32'd0, 4'b1111);
+        // 2. Lectura de media palabra
+        $display("\n<< Lectura de media palabra >>");
+        task_read(32'd4, 4'b0011);
+        // 3. Lectura de byte
+        $display("\n<< Lectura de byte >>");
+        task_read(32'd7, 4'b0001);
+        // 4. Lectura desfasada
+        $display("\n<< Lectura desfasada >>");
+        task_read(32'd6, 4'b1111);
 
-        // --- 2. TEST 1: Escritura Completa (Word) ---
-        // Escribimos en 0x04. Word_idx debería ser 1.
-        task_write(32'h00000004, 32'hDEADBEEF, 4'b1111);
-        
-        // --- 3. TEST 2: Escritura Parcial (Half-word) ---
-        // Escribimos en 0x08. Word_idx debería ser 2.
-        // Usamos la tarea de Byte Replicado para probar seguridad
-        task_write(32'h00000008, 16'hABCD, 4'b0011);
-
-        // --- 4. TEST 3: Escritura Parcial (byte) ---
-        // Escribimos en 0x08. Word_idx debería ser 2.
-        // Usamos la tarea de Byte Replicado para probar seguridad
-        task_write(32'h0000000a, 16'h77, 4'b0001);
-
-        // --- 5. Verificación de Lectura ---
-        #10;
-        task_read(32'h00000004, 4'b1111);
-        $display("[READ] Address 0x04: %h (Expected: DEADBEEF)", RD);
-        
-        task_read(32'h00000008, 4'b1111);
-        $display("[READ] Address 0x08: %h (Expected: 0077ABCD)", RD);
-
-        // --- 6. Volcado Final ---
-        #20;
+        // --- Pruebas de escritura ---
+        $display("\n-------------------[Pruebas de escritura]-------------------");
+        // 1. Escritura de palabra completa
+        $display("\n<< Escritura de palabra completa >>");
+        task_write(32'd8, 32'hFFFFAAAA, 4'b1111);
+        task_read(32'd8, 4'b1111);
+        // 2. Escritura de media palabra
+        $display("\n<< Escritura de media palabra >>");
+        task_write(32'd8, 32'h87654321, 4'b0011);
+        task_read(32'd8, 4'b1111);
+        // 3. Escritura de byte
+        $display("\n<< Escritura de byte >>");
+        task_write(32'd11, 32'hBBBBBBBB, 4'b0001);
+        task_read(32'd8, 4'b1111);
+        // 4. Escritura desfasada
+        $display("\n<< Escritura desfasada >>");
+        task_write(32'd14, 32'hdeadbeef, 4'b0111);
+        task_read(32'd12, 4'b1111);
+        task_read(32'd16, 4'b1111);
+        // --- Volcado final ---
         $display("\n[SISTEMA] Generando archivo de salida corregido...");
-        $writememh("./output/data_mem_exit.hex", dut.RAM);
+        $writememh("./output/data_mem_exit.hex", _dut.RAM);
         $display("[SISTEMA] Archivo generado exitosamente.");
         $finish;
     end
 
-    // --- Tareas Corregidas con Delays de Estabilización ---
-
-    task task_write(input [31:0] addr, input [31:0] data, input [3:0] mask);
+    // --- Tareas para interacción con la memoria ---
+    task task_read(input [31:0] address, input [3:0] mask);
         begin
-            @(posedge CLK);
-            #1; // Delay crucial: cambiamos señales justo después del flanco
-            A = addr;
-            WD = data;
-            WE = 1;
-            ASM = mask;
-            @(posedge CLK);
-            #1; // Esperamos a que el dato se capture
-            WE = 0;
-            ASM = 4'b0000;
+            $display("+ TASK_READ: A[0x%0d], BM[%b]", address, mask);
+            addr = address;
+            wd = '0;
+            bm = mask;
+            re = 1'b1; we = 1'b0;
+            for (int i = 0; i < LAT; i++) begin
+                #10;
+                if (r_ready) $display("[%0d] End of search! Data found: %h", i+1, rd);
+                else $display("[%0d] Looking for data on memory...", i+1);
+            end
+            if (r_ready) begin 
+                $display("[OUTPUT BURST] Content found! A1[0x%0d], A2[0x%0d]", burst_addr[0], burst_addr[1]);
+                for (int i = 0; i < 2; i++) $display("BURST_1[%0d] = %h", i, burst1[i]);
+                for (int i = 0; i < 2; i++) $display("BURST_2[%0d] = %h", i, burst2[i]);
+            end
+            addr = '0;
+            wd = '0;
+            bm = 4'b0000;
+            re = 1'b0; we = 1'b0;
         end
+        
     endtask
 
-    task EscribirMediaPalabra(input [31:0] addr, input [15:0] data, input [3:0] mask);
+    task task_write(input [31:0] address, input [31:0] data, input [3:0] mask);
         begin
-            @(posedge CLK);
-            #1;
-            A = addr;
-            WE = 1;
-            ASM = mask;
-            WD = {16'h0, data}; // Colocamos la media palabra en la base
-            @(posedge CLK);
-            #1;
-            WE = 0;
-            ASM = 4'b0000;
-        end
-    endtask
-
-    task task_read(input [31:0] addr, input [3:0] mask);
-        begin
-            #1; // Fuera de flanco
-            A = addr;
-            ASM = mask;
-            #2; // Tiempo para always_comb
+            $display("+ TASK_WRITE: A[0x%0d], WD[%h], BM[%b]", address, data, mask);
+            #5;
+            addr = address;
+            wd = data;
+            bm = mask;
+            re = 1'b0; we = 1'b1;
+            for (int i = 0; i < LAT; i++) begin
+                #10;
+                if (w_ready) $display("[%0d] End of write! Data was written succesfully", i+1);
+                else $display("[%0d] Writing data on memory...", i+1);
+            end
+            addr = '0;
+            wd = '0;
+            bm = 4'b0000;
+            re = 1'b0; we = 1'b0;
+            #5;
         end
     endtask
 
