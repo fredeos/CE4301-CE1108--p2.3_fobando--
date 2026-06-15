@@ -1,0 +1,50 @@
+bloques sumatoria:
+------------------------- inicio sumatoria_B0 --------------------------
+sumatoria_B0:
+  succ: sumatoria_for_cond_1
+  t1 = 0
+  val = t1
+  t2 = 0
+  i = t2
+--------------------------- fin sumatoria_B0 ---------------------------
+--------------------- inicio sumatoria_for_cond_1 ----------------------
+sumatoria_for_cond_1:
+  pred: sumatoria_B0, sumatoria_for_update_2
+  succ: sumatoria_B2, sumatoria_for_end_3
+  t3 = i < limit
+  if_false t3 goto sumatoria_for_end_3
+----------------------- fin sumatoria_for_cond_1 -----------------------
+------------------------- inicio sumatoria_B2 --------------------------
+sumatoria_B2:
+  pred: sumatoria_for_cond_1
+  succ: sumatoria_for_update_2
+  t4 = val + i
+  val = t4
+--------------------------- fin sumatoria_B2 ---------------------------
+-------------------- inicio sumatoria_for_update_2 ---------------------
+sumatoria_for_update_2:
+  pred: sumatoria_B2
+  succ: sumatoria_for_cond_1
+  t5 = 1
+  t6 = i + t5
+  i = t6
+  goto sumatoria_for_cond_1
+---------------------- fin sumatoria_for_update_2 ----------------------
+---------------------- inicio sumatoria_for_end_3 ----------------------
+sumatoria_for_end_3:
+  pred: sumatoria_for_cond_1
+  return val
+----------------------- fin sumatoria_for_end_3 ------------------------
+
+bloques main:
+---------------------------- inicio main_B0 ----------------------------
+main_B0:
+  calls: sumatoria_B0
+  t1 = 10
+  iters = t1
+  t2 = 10
+  param t2
+  t3 = call sumatoria, 1
+  resultado = t3
+  return
+----------------------------- fin main_B0 ------------------------------

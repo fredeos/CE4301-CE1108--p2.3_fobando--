@@ -1,0 +1,50 @@
+{
+  "nodes": [
+    {
+      "id": "sumatoria_B0"
+    },
+    {
+      "id": "sumatoria_for_cond_1"
+    },
+    {
+      "id": "sumatoria_B2"
+    },
+    {
+      "id": "sumatoria_for_update_2"
+    },
+    {
+      "id": "sumatoria_for_end_3"
+    },
+    {
+      "id": "main_B0"
+    }
+  ],
+  "edges": [
+    {
+      "from": "sumatoria_B0",
+      "to": "sumatoria_for_cond_1"
+    },
+    {
+      "from": "sumatoria_for_cond_1",
+      "to": "sumatoria_for_end_3",
+      "condition": "t3 == 0"
+    },
+    {
+      "from": "sumatoria_for_cond_1",
+      "to": "sumatoria_B2",
+      "condition": "t3 != 0"
+    },
+    {
+      "from": "sumatoria_B2",
+      "to": "sumatoria_for_update_2"
+    },
+    {
+      "from": "sumatoria_for_update_2",
+      "to": "sumatoria_for_cond_1"
+    },
+    {
+      "from": "main_B0",
+      "to": "sumatoria_B0"
+    }
+  ]
+}
