@@ -397,14 +397,14 @@ module pipeline_wcache ( // Pipeline de 5 etapas para arquitectura RISC: F32IS
 
     packed_mem  #(
         .L1_LATENCY(1),
-        .L2_LATENCY(8),
-        .MEM_LATENCY(25),
+        .L2_LATENCY(2),
+        .MEM_LATENCY(4),
         .L1_SIZE(4 * 1024),
         .L2_SIZE(16 * 1024),
         .MEM_SIZE(64 * 1024),
         .L1_ASO(2),
         .L2_ASO(4),
-        .WPL(2)
+        .WPL(8)
     ) _packed_mem (
         .CLK(clk), 
         .RST(rst),
@@ -462,6 +462,23 @@ module pipeline_wcache ( // Pipeline de 5 etapas para arquitectura RISC: F32IS
     // + Seleccionar señales de salida
     assign WB_DataOut = (WB_MemToReg[1]) ? ( (WB_MemToReg[0]) ? WB_PCplus4 : WB_MemOut) : ( (WB_MemToReg[0]) ? WB_ALUOut : WB_VaultOut);
     
+    // --- 6. Instrucciones validas ---
+    // + Flip-Flop para pipe WB
+    logic [31:0] pmu_inst_count;
+
+    always_ff @(posedge clk, posedge rst) begin
+        if (rst) begin
+            pmu_inst_count <= '0;
+        end else begin
+            // Una instrucción es válida si:
+            // - No es un NOP (instrucción vacía o burbuja)
+            // - La etapa WB no está sufriendo un Stall (~WB_EN significa que el pipeline AVANZA hacia WB)
+            // - No estamos en rst ni el programa ha terminado completamente
+            if ((WB_INSTR != nop) && (~WB_EN) && (!WB_end_program)) begin
+                pmu_inst_count <= pmu_inst_count + 1;
+            end
+        end
+    end
 
     // --- 6. Instrucciones validas ---
     // + Flip-Flop para pipe WB

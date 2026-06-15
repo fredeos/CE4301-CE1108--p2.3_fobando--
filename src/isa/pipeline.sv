@@ -355,8 +355,8 @@ module pipeline ( // Pipeline de 5 etapas para arquitectura RISC: F32IS
 
     data_memory #(
         .SIZE(64 * 1024),
-        .LATENCY(25),
-        .WPL(4)
+        .LATENCY(4),
+        .WPL(8)
     ) _ram (
         .CLK(clk), .RST(rst),
         .WE(MEM_MemWrite[1]), .WBM(MEM_MemBytes[7:4]), .WA(MEM_ALUOut), .WD(MEM_Op2),
@@ -421,26 +421,22 @@ module pipeline ( // Pipeline de 5 etapas para arquitectura RISC: F32IS
         .RD1FwdEX(EX_Op1Fwd), .RD2FwdEX(EX_Op2Fwd), .RD3FwdEX(EX_Op3Fwd)
     );
 
-        // 3. Instancia de la PMU (Performance Monitoring Unit)
-    pmu #(.COUNTER_WIDTH(32)) _pmu (
+        pmu #(.COUNTER_WIDTH(32)) _pmu (
         .clk(clk),
         .rst_n(~rst),
-        
+
         // Conexión a las señales que declaramos arriba
         .event_mem_write_access(MEM_mem_ready[0]),
         .event_mem_read_access(MEM_mem_ready[1]),
         .event_branch_taken(MEM_PCSrc[0] | MEM_PCSrc[1] | WB_PCSrc),
 
-        .cache_search_ready(cache_search_ready),
+        .cache_search_ready(MEM_mem_ready[0] | MEM_mem_ready[1]),
 
         // Señales para contar las instrucciones
         .wb_instr(WB_INSTR),
         .wb_en(WB_EN),
         .wb_end_program(WB_end_program)
-        
+
     );
-
-
-
 
 endmodule

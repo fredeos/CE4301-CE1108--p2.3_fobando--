@@ -3,7 +3,7 @@
 module pipeline_tb ();
     logic clk, rst;
 
-    int cycles = 1000;
+    int cycles = 100000;
     int factor = 500;
     logic [31:0] cycle;
     logic [31:0] pmu_val;
@@ -15,9 +15,6 @@ module pipeline_tb ();
     int total_cycles      = 0;
     real ipc               = 0;
     int amat = 0;
-
-
-
 
     always #5 clk = ~clk;
     always_ff @(posedge clk) cycle <= cycle + 1;
@@ -52,7 +49,6 @@ module pipeline_tb ();
         end
 
 
-        
         // El while ahora depende de una condición de tiempo y del valor
         while (j < secure_ending_cycles) begin
             @(posedge clk);
@@ -70,7 +66,7 @@ module pipeline_tb ();
 
         $display("\n--- General ---");
 
-                force _cpu._pmu.read_addr = 5'd0; @(posedge clk); #1;
+        force _cpu._pmu.read_addr = 5'd0; @(posedge clk); #1;
         pmu_val = _cpu._pmu.read_data - secure_ending_cycles;
         total_cycles = int'(_cpu._pmu.read_data);
         $display("Total Cycles              : %0d", pmu_val);
