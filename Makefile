@@ -100,7 +100,10 @@ imm_ext: dirs
 
 # + Procesadores con pipeline
 pipeline: dirs
-	iverilog -g2012 -o ${GEN}/$@.out ${CPU_SRC}/$@.sv ${MODS} ${CPU_SRC}/tests/$@_tb.sv
+	iverilog -g2012 -o ${GEN}/$@.out \
+	${CPU_SRC}/pipeline.sv \
+	${MODS} \
+	${CPU_SRC}/tests/pipeline_tb.sv
 
 	
 pipeline_wcache: dirs

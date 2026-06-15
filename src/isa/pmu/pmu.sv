@@ -69,10 +69,10 @@
 //
 //   Ejemplo corregido:
 //     // En always_comb:
-//     if (rise_l1r) delta_total = delta_total + 1;
-//     if (rise_l1w) delta_total = delta_total + 1;
+//     if (rise_l1r) delta_total_misses = delta_total_misses + 1;
+//     if (rise_l1w) delta_total_misses = delta_total_misses + 1;
 //     // En always_ff: una sola escritura, delta ya tiene el total correcto
-//     if (delta_total > 0) val_total_misses <= val_total_misses + delta_total;
+//     if (delta_total_misses > 0) val_total_misses <= val_total_misses + delta_total_misses;
 //
 // INTERFAZ DE LECTURA
 // -------------------
@@ -132,14 +132,25 @@ module pmu #(
     input  logic event_cache_l1_miss_write,  // Miss de escritura activo en L1
     input  logic event_cache_l2_miss_read,   // Miss de lectura  activo en L2
     input  logic event_cache_l2_miss_write,  // Miss de escritura activo en L2
-    input  logic event_cache_l1_access,      // Acceso a L1
-    input  logic event_cache_l2_access,      // Acceso a L2
-
+    input  logic event_cache_l1_write_access,
+    input  logic event_cache_l1_read_access,      
+    input  logic event_cache_l2_write_access,
+    input  logic event_cache_l2_read_access,
+    input  logic event_mem_write_access,
+    input  logic event_mem_read_access,    
     // Señal de finalización de búsqueda en caché. No se utiliza actualmente
     // para el conteo (la detección de flanco lo hace innecesario), pero se
     // mantiene en la interfaz para posibles extensiones futuras como medir
     // latencia de miss o contabilizar hits.
     input  logic cache_search_ready,
+
+    // --- Señales para contar instrucciones ---
+    input logic [31:0] wb_instr,
+    input logic wb_en,
+    input logic wb_end_program,
+
+    // --- Señales para contar stalls por branches ---
+    input logic event_branch_taken,
 
 
     // ------------------------------------------------------------------
@@ -167,7 +178,10 @@ module pmu #(
     logic [COUNTER_WIDTH-1:0] val_total_l2_write_misses; // Misses de escritura en L2
     logic [COUNTER_WIDTH-1:0] val_total_l1_accesses;    // Accessos en L1
     logic [COUNTER_WIDTH-1:0] val_total_l2_accesses;    // Accessos en L2
-
+    logic [COUNTER_WIDTH-1:0] val_total_mem_accesses;    // Accessos a Memoria
+    logic [COUNTER_WIDTH-1:0] val_total_inst_count;       //Instrucciones totales
+    logic [COUNTER_WIDTH-1:0] val_total_branch_stalls;    //Stalls por riesgos de control
+    
     // ================================================================
     // DETECCIÓN DE FLANCO DE SUBIDA
     // ================================================================
@@ -180,15 +194,20 @@ module pmu #(
     // prev_l1w rastrea exclusivamente event_cache_l1_miss_write
     // prev_l2r rastrea exclusivamente event_cache_l2_miss_read
     // prev_l2w rastrea exclusivamente event_cache_l2_miss_write
-    // prev_l1_acc rastrea exclusivamente event_cache_l2_miss_write
-    // prev_l2_acc rastrea exclusivamente event_cache_l2_miss_write
+    // prev_l1_write_acc / prev_l1_read_acc rastrean event_cache_l1_write/read_access
+    // prev_l2_write_acc / prev_l2_read_acc rastrean event_cache_l2_write/read_access
 
     logic prev_l1r;  // Estado de event_cache_l1_miss_read  en el ciclo anterior
     logic prev_l1w;  // Estado de event_cache_l1_miss_write en el ciclo anterior
     logic prev_l2r;  // Estado de event_cache_l2_miss_read  en el ciclo anterior
     logic prev_l2w;  // Estado de event_cache_l2_miss_write en el ciclo anterior
-    logic prev_l1_acc;  // Estado de event_cache_l1_access en el ciclo anterior
-    logic prev_l2_acc;  // Estado de event_cache_l2_access en el ciclo anterior
+    logic prev_l1_write_acc;   // Estado de event_cache_l1_write_access en el ciclo anterior
+    logic prev_l1_read_acc;    // Estado de event_cache_l1_read_access  en el ciclo anterior
+    logic prev_l2_write_acc;   // Estado de event_cache_l2_write_access en el ciclo anterior
+    logic prev_l2_read_acc;    // Estado de event_cache_l2_read_access  en el ciclo anterior
+    logic prev_mem_write_acc;  // Estado de event_mem_write_access en el ciclo anterior
+    logic prev_mem_read_acc;   // Estado de event_mem_read_access  en el ciclo anterior
+    logic prev_branch_taken;
 
     // Flancos de subida (rise = rising edge):
     // rise_XY = 1 únicamente el primer ciclo que event_XY pasa de 0 a 1.
@@ -198,8 +217,19 @@ module pmu #(
     wire rise_l1w = event_cache_l1_miss_write & ~prev_l1w;
     wire rise_l2r = event_cache_l2_miss_read  & ~prev_l2r;
     wire rise_l2w = event_cache_l2_miss_write & ~prev_l2w;
-    wire rise_l1_acc = event_cache_l1_access & ~prev_l1_acc;
-    wire rise_l2_acc = event_cache_l2_access & ~prev_l2_acc;
+
+
+    // Flancos de subida para señales de acceso a caché.
+    // Permiten contabilizar exactamente un acceso por operación aunque la
+    // señal permanezca alta varios ciclos durante un stall.
+    wire rise_l1_write_acc  = event_cache_l1_write_access & ~prev_l1_write_acc;
+    wire rise_l1_read_acc   = event_cache_l1_read_access  & ~prev_l1_read_acc;
+    wire rise_l2_write_acc  = event_cache_l2_write_access & ~prev_l2_write_acc;
+    wire rise_l2_read_acc   = event_cache_l2_read_access  & ~prev_l2_read_acc;
+    wire rise_mem_write_acc = event_mem_write_access       & ~prev_mem_write_acc;
+    wire rise_mem_read_acc  = event_mem_read_access        & ~prev_mem_read_acc;
+
+    wire rise_branch_taken = event_branch_taken & ~prev_branch_taken;
     
 
     // ================================================================
@@ -219,58 +249,57 @@ module pmu #(
     //   Con delta_l1, ambas contribuciones se suman primero en lógica
     //   combinacional (delta_l1 = 2) y luego se aplican con una sola <=.
     //
-    // delta_total : incremento para val_total_misses  (todos los niveles)
-    // delta_l1    : incremento para val_total_l1_misses (solo eventos L1)
-    // delta_l2    : incremento para val_total_l2_misses (solo eventos L2)
+    // delta_total_misses : incremento para val_total_misses    (todos los niveles)
+    // delta_l1           : incremento para val_total_l1_misses (solo misses L1)
+    // delta_l2           : incremento para val_total_l2_misses (solo misses L2)
+    // delta_l1_accesses  : incremento para val_total_l1_accesses (accesos a L1)
+    // delta_l2_accesses  : incremento para val_total_l2_accesses (accesos a L2)
 
-    logic [COUNTER_WIDTH-1:0] delta_total;
+    logic [COUNTER_WIDTH-1:0] delta_total_misses;
     logic [COUNTER_WIDTH-1:0] delta_l1;
     logic [COUNTER_WIDTH-1:0] delta_l2;
     logic [COUNTER_WIDTH-1:0] delta_l1_accesses;
     logic [COUNTER_WIDTH-1:0] delta_l2_accesses;
+    logic [COUNTER_WIDTH-1:0] delta_mem_accesses;
 
     always_comb begin
         // Inicializar a cero; se suma solo si el flanco correspondiente está activo
-        delta_total = '0;
-        delta_l1    = '0;
-        delta_l2    = '0;
-        delta_l1_accesses   = '0;
-        delta_l2_accesses   = '0;
+        delta_total_misses   = '0;
+        delta_l1             = '0;
+        delta_l2             = '0;
+        delta_l1_accesses    = '0;
+        delta_l2_accesses    = '0;
+        delta_mem_accesses   = '0;
 
-        // Un miss L1 de lectura contribuye al total global y al subtotal L1
-        if (event_cache_l1_access) begin
-            delta_l1_accesses = delta_l1_accesses + 1;
-        end
-
-        // Un miss L1 de lectura contribuye al total global y al subtotal L1
-        if (event_cache_l2_access) begin
-            delta_l2_accesses = delta_l2_accesses + 1;
-        end
-
-
-        // Un miss L1 de lectura contribuye al total global y al subtotal L1
+        // Los accesos también se detectan por flanco de subida para evitar
+        // contar múltiples veces el mismo acceso durante ciclos de stall.
         if (rise_l1r) begin
-            delta_total = delta_total + 1;
+            delta_total_misses = delta_total_misses + 1;
             delta_l1    = delta_l1    + 1;
         end
 
-        // Un miss L1 de escritura contribuye al total global y al subtotal L1
         if (rise_l1w) begin
-            delta_total = delta_total + 1;
+            delta_total_misses = delta_total_misses + 1;
             delta_l1    = delta_l1    + 1;
         end
 
-        // Un miss L2 de lectura contribuye al total global y al subtotal L2
         if (rise_l2r) begin
-            delta_total = delta_total + 1;
+            delta_total_misses = delta_total_misses + 1;
             delta_l2    = delta_l2    + 1;
         end
 
-        // Un miss L2 de escritura contribuye al total global y al subtotal L2
         if (rise_l2w) begin
-            delta_total = delta_total + 1;
+            delta_total_misses = delta_total_misses + 1;
             delta_l2    = delta_l2    + 1;
         end
+
+        if (rise_l1_read_acc)   delta_l1_accesses  = delta_l1_accesses  + 1;
+        if (rise_l1_write_acc)  delta_l1_accesses  = delta_l1_accesses  + 1;
+        if (rise_l2_read_acc)   delta_l2_accesses  = delta_l2_accesses  + 1;
+        if (rise_l2_write_acc)  delta_l2_accesses  = delta_l2_accesses  + 1;
+        if (rise_mem_read_acc)  delta_mem_accesses = delta_mem_accesses  + 1;
+        if (rise_mem_write_acc) delta_mem_accesses = delta_mem_accesses  + 1;
+
     end
 
     // ================================================================
@@ -321,6 +350,9 @@ module pmu #(
             val_total_l2_write_misses <= '0;
             val_total_l1_accesses     <= '0;
             val_total_l2_accesses     <= '0;
+            val_total_mem_accesses    <= '0;
+            val_total_branch_stalls <= '0;
+
 
             // Reset de registros de estado previo para la detección de flanco.
             // Se ponen a 0 para que si la señal ya está en 1 al salir del
@@ -329,8 +361,13 @@ module pmu #(
             prev_l1w <= 1'b0;
             prev_l2r <= 1'b0;
             prev_l2w <= 1'b0;
-            prev_l1_acc <= 1'b0;
-            prev_l2_acc <= 1'b0;
+            prev_l1_write_acc  <= 1'b0;
+            prev_l1_read_acc   <= 1'b0;
+            prev_l2_write_acc  <= 1'b0;
+            prev_l2_read_acc   <= 1'b0;
+            prev_mem_write_acc <= 1'b0;
+            prev_mem_read_acc  <= 1'b0;
+            prev_branch_taken <= 1'b0;
 
         end else begin
 
@@ -344,20 +381,35 @@ module pmu #(
             prev_l1w <= event_cache_l1_miss_write;
             prev_l2r <= event_cache_l2_miss_read;
             prev_l2w <= event_cache_l2_miss_write;
-            prev_l1_acc <= event_cache_l1_access;
-            prev_l2_acc <= event_cache_l2_access;
+
+            prev_l1_write_acc  <= event_cache_l1_write_access;
+            prev_l1_read_acc   <= event_cache_l1_read_access;
+            prev_l2_write_acc  <= event_cache_l2_write_access;
+            prev_l2_read_acc   <= event_cache_l2_read_access;
+            prev_mem_write_acc <= event_mem_write_access;
+            prev_mem_read_acc  <= event_mem_read_access;
+
+            prev_branch_taken <= event_branch_taken;
 
             // --------------------------------------------------------------
-            // Paso 2: Incrementar contadores individuales.
-            // Cada contador solo puede ser modificado por una señal rise_*,
-            // por lo que no hay riesgo de colisión entre asignaciones <=.
+            // Paso 2: Incrementar contadores individuales de miss.
+            // Cada contador hoja (por tipo de miss) tiene una única señal
+            // rise_* que lo puede activar, por lo que no hay riesgo de
+            // colisión entre asignaciones <=.
+            // Los contadores de acceso (L1/L2) no están aquí: se actualizan
+            // exclusivamente vía delta en el Paso 3, porque rise_l1_write_acc
+            // y rise_l1_read_acc pueden ser ambos 1 en el mismo ciclo y
+            // ambos modificarían val_total_l1_accesses → solo sobreviviría
+            // la segunda asignación. El delta resuelve esto.
             // --------------------------------------------------------------
             if (rise_l1r) val_total_l1_read_misses  <= val_total_l1_read_misses  + 1'b1;
             if (rise_l1w) val_total_l1_write_misses <= val_total_l1_write_misses + 1'b1;
             if (rise_l2r) val_total_l2_read_misses  <= val_total_l2_read_misses  + 1'b1;
             if (rise_l2w) val_total_l2_write_misses <= val_total_l2_write_misses + 1'b1;
-            if (rise_l1_acc) val_total_l1_accesses  <= val_total_l1_accesses  + 1'b1;
-            if (rise_l2_acc) val_total_l2_accesses <= val_total_l2_accesses + 1'b1;
+
+            if (rise_branch_taken) begin
+            val_total_branch_stalls <= val_total_branch_stalls + 32'd3;
+            end
 
             // --------------------------------------------------------------
             // Paso 3: Incrementar contadores agregados usando deltas.
@@ -366,13 +418,26 @@ module pmu #(
             // La condición "> 0" evita escrituras innecesarias cuando no hubo
             // ningún evento, aunque el resultado sería idéntico sin ella.
             // --------------------------------------------------------------
-            if (delta_total > 0) val_total_misses    <= val_total_misses    + delta_total;
+            if (delta_total_misses > 0) val_total_misses    <= val_total_misses    + delta_total_misses;
             if (delta_l1    > 0) val_total_l1_misses <= val_total_l1_misses + delta_l1;
             if (delta_l2    > 0) val_total_l2_misses <= val_total_l2_misses + delta_l2;
 
-            if (delta_l1_accesses    > 0) val_total_l1_accesses <= val_total_l1_accesses + delta_l1_accesses;
-            if (delta_l2_accesses    > 0) val_total_l2_accesses <= val_total_l2_accesses + delta_l2_accesses;
+            if (delta_l1_accesses  > 0) val_total_l1_accesses  <= val_total_l1_accesses  + delta_l1_accesses;
+            if (delta_l2_accesses  > 0) val_total_l2_accesses  <= val_total_l2_accesses  + delta_l2_accesses;
+            if (delta_mem_accesses > 0) val_total_mem_accesses <= val_total_mem_accesses + delta_mem_accesses;
 
+        end
+    end
+
+
+    // Lógica del contador interna en la PMU
+    always_ff @(posedge clk or posedge rst_n) begin
+        if (!rst_n) begin
+            val_total_inst_count <= '0;
+        end else begin
+            if ((wb_instr != 32'h00000080) && (~wb_en) && (!wb_end_program)) begin
+                val_total_inst_count <= val_total_inst_count + 1;
+            end
         end
     end
 
@@ -406,7 +471,10 @@ module pmu #(
             5'd6: read_data = val_total_l2_read_misses;
             5'd7: read_data = val_total_l2_write_misses;
             5'd8: read_data = val_total_l1_accesses;
-            5'd9: read_data = val_total_l2_accesses;
+            5'd9:  read_data = val_total_l2_accesses;
+            5'd10: read_data = val_total_mem_accesses;
+            5'd11: read_data = val_total_inst_count;
+            5'd12: read_data = val_total_branch_stalls;
             default: read_data = '0;
         endcase
     end

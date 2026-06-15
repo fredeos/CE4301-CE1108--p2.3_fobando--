@@ -5,7 +5,8 @@ __init__:
     mov p0, r0
     la p1, 0  # asignar dir. a un parametro 
     la p2, 4  # asignar dir. a un parametro
-    call 3    # @foo
+    call 4    # @foo
+    nop
     addi r0, r0, -2
     stw r0,+ 8(zero)
     end

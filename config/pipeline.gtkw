@@ -1,56 +1,44 @@
 [*]
-[*] GTKWave Analyzer v3.3.127 (w)1999-2026 BSI
-[*] Fri Jun 12 05:52:33 2026
+[*] GTKWave Analyzer v3.3.100 (w)1999-2019 BSI
+[*] Sun Jun 14 22:43:10 2026
 [*]
-[dumpfile] "D:\Brayan\Tareas TEC\Septimo Semestre\Arqui 1\Proyecto_3\config\gen\pipeline.vcd"
-[savefile] "D:\Brayan\Tareas TEC\Septimo Semestre\Arqui 1\Proyecto_3\config\pipeline.gtkw"
-[timestart] 25960000000
-[size] 1920 985
-[pos] -135 -132
-*-34.200001 65000000000 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
-[treeopen] pipeline_wcache_tb.
-[treeopen] pipeline_wcache_tb._cpu.
-[treeopen] pipeline_wcache_tb._cpu._packed_mem.
-[treeopen] pipeline_wcache_tb._cpu._pmu.
+[dumpfile] "B:\workbench\repos\CE4301-CE1108--p2.3_fobando--\gen\pipeline.vcd"
+[dumpfile_mtime] "Sun Jun 14 22:18:46 2026"
+[dumpfile_size] 325863
+[savefile] "B:\workbench\repos\CE4301-CE1108--p2.3_fobando--\config\pipeline.gtkw"
+[timestart] 4003900000000
+[size] 1536 793
+[pos] -1 -1
+*-35.200001 4075100000000 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
+[treeopen] pipeline_tb.
 [sst_width] 246
 [signals_width] 303
 [sst_expanded] 1
-[sst_vpaned_height] 633
-@22
-pipeline_wcache_tb._cpu.IF_INSTR[31:0]
-pipeline_wcache_tb._cpu.ID_INSTR[31:0]
-pipeline_wcache_tb._cpu.EX_INSTR[31:0]
-pipeline_wcache_tb._cpu.MEM_INSTR[31:0]
-pipeline_wcache_tb._cpu.WB_INSTR[31:0]
+[sst_vpaned_height] 272
 @28
-pipeline_wcache_tb._cpu.clk
-pipeline_wcache_tb._cpu._hazard_unit.mem_busy
-pipeline_wcache_tb._cpu._hazard_unit.cache_search_ready
+pipeline_tb.clk
+pipeline_tb.rst
 @22
-pipeline_wcache_tb._cpu.WB_MemOut[31:0]
-pipeline_wcache_tb._cpu.MEM_MemOut[31:0]
-pipeline_wcache_tb._cpu._packed_mem.RD[31:0]
+pipeline_tb._cpu.IF_INSTR[31:0]
+pipeline_tb._cpu.ID_INSTR[31:0]
+pipeline_tb._cpu.EX_INSTR[31:0]
+pipeline_tb._cpu.MEM_INSTR[31:0]
+pipeline_tb._cpu.WB_INSTR[31:0]
 @28
-pipeline_wcache_tb._cpu._packed_mem.ready
-pipeline_wcache_tb._cpu._packed_mem.state[2:0]
-@22
-pipeline_wcache_tb._cpu._pmu.u_cycles_counter.total_cycles[31:0]
-pipeline_wcache_tb._cpu._packed_mem.A[31:0]
-@28
-pipeline_wcache_tb._cpu._packed_mem.M_RE
-pipeline_wcache_tb._cpu._packed_mem.M_rdy[1:0]
-@22
-pipeline_wcache_tb._cpu._packed_mem.L2_hits_M[3:0]
-@28
-pipeline_wcache_tb._cpu._packed_mem._l2_writebuf.lk_boundbits[7:0]
-@22
-pipeline_wcache_tb._cpu._packed_mem._l2_writebuf.hits_dude[3:0]
-pipeline_wcache_tb._cpu._packed_mem._l2_writebuf.adder_dude[31:0]
-@28
-pipeline_wcache_tb._cpu.MEM_MemWrite[1:0]
-pipeline_wcache_tb._cpu.WB_EN
-pipeline_wcache_tb._cpu.cache_write_halt
+pipeline_tb._cpu.ID_end_program
+pipeline_tb._cpu.EX_end_program
+pipeline_tb._cpu.MEM_end_program
+pipeline_tb._cpu.WB_end_program
+pipeline_tb._cpu.IF_EN
+pipeline_tb._cpu.ID_EN
+pipeline_tb._cpu.EX_EN
+pipeline_tb._cpu.MEM_EN
+pipeline_tb._cpu.WB_EN
+pipeline_tb._cpu.MEM_mem_ready[1:0]
+pipeline_tb._cpu.IF_CLR
+pipeline_tb._cpu.ID_CLR
+pipeline_tb._cpu.EX_CLR
 @29
-pipeline_wcache_tb._cpu._packed_mem.wd_state[1:0]
+pipeline_tb._cpu.MEM_CLR
 [pattern_trace] 1
 [pattern_trace] 0
