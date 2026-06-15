@@ -364,7 +364,7 @@ class SymbolTable:
 
         if symbol.type_info is None:
             return
-        symbol.size = symbol.type_info.total_size()
+        symbol.size = WORD_SIZE if symbol.extra.get("array_reference") else symbol.type_info.total_size()
         symbol.alignment = WORD_SIZE
         symbol.segment = "stack"
         symbol.offset = self.allocate_local(symbol.size)

@@ -34,6 +34,7 @@ TEMP_REGS = [f"r{i}" for i in range(16)]
 SECURE_REGS = ["ax", "bx", "cx", "dx", "ex", "fx", "gx", "hx"]
 WRITABLE_SECURE_REGS = SECURE_REGS[1:]
 SAVE_REGS = ["ra"]
+FRAME_LOCAL_PADDING_WORDS = 1
 BRANCH_IMMEDIATE_BITS = 12
 JUMP_IMMEDIATE_BITS = 21
 SIGNED_IMMEDIATE_MIN = -(1 << 11)
@@ -176,10 +177,13 @@ class AssemblyGenerator:
         self.current_call_spill_max = 0
         self.current_homed_params: set[str] = set()
 
-        self.current_saved_area = len(SAVE_REGS) * WORD_SIZE
+        # Una palabra libre separa los registros salvados del primer local.
+        # Evita que arreglos locales pasados por referencia pierdan su celda 0.
+        self.current_saved_area = (len(SAVE_REGS) + FRAME_LOCAL_PADDING_WORDS) * WORD_SIZE
         self.current_local_size = 0
         self.current_param_shadow_offsets: Dict[str, int] = {}
         self.emit_entrypoint = True
+        self.emit_end_marker = False
         self.stack_base_address = DATA_BASE
 
     # API PRINCIPAL
@@ -189,6 +193,7 @@ class AssemblyGenerator:
         program: ProgramNode,
         symbol_table: SymbolTable,
         emit_entrypoint: bool = True,
+        emit_end_marker: bool = False,
     ) -> AssemblyResult:
         """Genera ensamblador para un programa completo."""
 
@@ -196,6 +201,7 @@ class AssemblyGenerator:
         self.scope_by_name = {scope.name: scope for scope in symbol_table.all_scopes}
         self.current_scope = symbol_table.global_scope
         self.emit_entrypoint = emit_entrypoint
+        self.emit_end_marker = emit_end_marker
 
         self._emit_comment("; Codigo ensamblador generado por FCC")
         self._emit_comment("; ISA base: F32IS (isa.md)")
@@ -553,6 +559,9 @@ class AssemblyGenerator:
 
         if type_info.is_pointer:
             return WORD_SIZE
+        if type_info.is_array:
+            # Al indexar una matriz, cada fila ocupa el tamano total del subarreglo.
+            return max(type_info.total_size(), WORD_SIZE)
         if type_info.name == "char":
             return 1
         return WORD_SIZE
@@ -722,6 +731,16 @@ class AssemblyGenerator:
             self._format_memory_operand(shadow_offset, "sp", symbol),
         )
         self.current_homed_params.add(symbol.name)
+
+    def _is_array_reference_symbol(self, symbol: Symbol) -> bool:
+        """Indica si un simbolo de arreglo guarda una direccion, no datos propios."""
+
+        return bool(
+            symbol.type_info is not None
+            and symbol.type_info.is_array
+            and symbol.segment == "stack"
+            and (symbol.type_info.has_unknown_size or symbol.extra.get("array_reference"))
+        )
 
     def _collect_parameter_homes(self, body: BlockNode) -> set[str]:
         """Detecta parametros que deben copiarse a stack por uso de direccion."""
@@ -930,18 +949,34 @@ class AssemblyGenerator:
 
             self._emit("mov", "p0", "zero", comment="resultado de programa por defecto")
             self._emit("call", LabelRef("main"), comment="entrada principal")
-            if PROGRAM_RESULT_SYMBOL in self.symbol_table.global_scope.symbols:
-                self._emit("la", "r0", AddressRef(PROGRAM_RESULT_SYMBOL), comment="celda de resultado del programa")
-                self._emit("stw", "p0", self._format_memory_operand(0, "r0"), comment="guardar resultado final")
-            self._emit_label("__halt__")
-            self._emit("jmp", LabelRef("__halt__"))
+            self._emit_program_stop()
 
         for decl in program.declarations:
             if isinstance(decl, FunctionDeclNode):
                 self._emit_function(decl)
 
-        # end marca el cierre fisico y debe quedar despues de todo el codigo.
-        self._emit("end")
+        if not self.emit_entrypoint and self.emit_end_marker:
+            # Sin __init__, end queda al final fisico del stream generado.
+            self._emit_end_marker()
+
+    def _emit_program_stop(self):
+        """Cierra el programa con end o con halt compatible sin end."""
+
+        if self.emit_end_marker:
+            self._emit_end_marker(comment="fin real del programa tras retornar de main")
+            self._emit_label("__end_fallback__")
+            self._emit("jmp", LabelRef("__end_fallback__"), comment="respaldo si end se interpreta como nop")
+            return
+
+        self._emit_label("__halt_no_end__")
+        self._emit("jmp", LabelRef("__halt_no_end__"), comment="fin sin instruccion end")
+
+    def _emit_end_marker(self, comment: Optional[str] = None):
+        """Emite el relleno obligatorio y la marca end final."""
+
+        for _ in range(3):
+            self._emit("nop", comment="relleno antes de end")
+        self._emit("end", comment=comment)
 
     def _emit_global_initializers(self, node: VarDeclNode):
         """Genera el codigo de inicializacion para globales con valor."""
@@ -975,11 +1010,23 @@ class AssemblyGenerator:
         if self.current_function_secure:
             self._emit("quit")
 
+        self._emit_program_result_store_if_main(node)
+
         for index, register in reversed(list(enumerate(SAVE_REGS))):
             self._emit("ldw", register, self._format_memory_operand(index * WORD_SIZE, "sp", node))
 
         self._emit_sp_adjust(-total_frame)
         self._emit("ret")
+
+    def _emit_program_result_store_if_main(self, node: FunctionDeclNode):
+        """Guarda p0 en la celda de resultado cuando retorna main."""
+
+        if not self.emit_entrypoint or node.name != "main":
+            return
+        if PROGRAM_RESULT_SYMBOL not in self.symbol_table.global_scope.symbols:
+            return
+        self._emit("la", "r0", AddressRef(PROGRAM_RESULT_SYMBOL), comment="celda de resultado del programa")
+        self._emit("stw", "p0", self._format_memory_operand(0, "r0", node), comment="guardar resultado final")
 
     def _emit_function(self, node: FunctionDeclNode):
         """Genera el ensamblador completo de una funcion."""
@@ -1368,6 +1415,13 @@ class AssemblyGenerator:
                 return result_reg
 
             if symbol.segment == "stack":
+                if self._is_array_reference_symbol(symbol):
+                    self._emit_user(
+                        "ldw",
+                        result_reg,
+                        self._format_memory_operand(self._local_slot_offset(symbol), "sp", symbol),
+                    )
+                    return result_reg
                 self._emit_add_immediate_user(result_reg, "sp", self._local_slot_offset(symbol))
                 return result_reg
 
@@ -1967,6 +2021,7 @@ class AssemblyGenerator:
         """Resuelve labels, direcciones y pseudos para producir texto final."""
 
         self._remove_redundant_fallthrough_jumps()
+        self._insert_load_use_waits()
 
         last_signature = None
         item_sizes: List[int] = []
@@ -2128,6 +2183,99 @@ class AssemblyGenerator:
             return []
 
         return lines
+
+    def _insert_load_use_waits(self):
+        """Inserta burbujas cuando un load alimenta la siguiente instruccion."""
+
+        scheduled: List[Union[Instruction, LabelMarker, str]] = []
+        index = 0
+        while index < len(self.items):
+            item = self.items[index]
+            scheduled.append(item)
+
+            if isinstance(item, Instruction):
+                loaded = self._loaded_registers(item)
+                consumer = self._next_instruction(index + 1)
+                if loaded and consumer is not None and loaded & self._source_registers(consumer):
+                    # La carga entrega el dato en MEM/WB; el consumidor inmediato necesita una burbuja.
+                    scheduled.append(Instruction("nop", comment="espera load-use"))
+
+            index += 1
+
+        self.items = scheduled
+
+    def _next_instruction(self, start: int) -> Optional[Instruction]:
+        """Busca la siguiente instruccion real ignorando labels y comentarios."""
+
+        for item in self.items[start:]:
+            if isinstance(item, Instruction):
+                return item
+        return None
+
+    def _loaded_registers(self, instruction: Instruction) -> set[str]:
+        """Devuelve el registro escrito por una carga de memoria."""
+
+        op = instruction.op.lstrip("@").lower()
+        if not op.startswith("ld") or not instruction.args:
+            return set()
+        register = self._register_name(instruction.args[0])
+        return {register} if register else set()
+
+    def _source_registers(self, instruction: Instruction) -> set[str]:
+        """Devuelve los registros leidos por una instruccion para detectar RAW."""
+
+        op = instruction.op.lstrip("@").lower()
+        args = instruction.args
+
+        if op == "ret":
+            return {"ra"}
+        if op.startswith("st") and len(args) >= 2:
+            return self._registers_from_values([args[0]]) | self._registers_from_memory(args[1])
+        if op.startswith("ld") and len(args) >= 2:
+            return self._registers_from_memory(args[1])
+        if op in {"beq", "bne", "bgt", "blt", "bge", "ble"} and len(args) >= 2:
+            return self._registers_from_values(args[:2])
+        if op == "beqz" and args:
+            return self._registers_from_values(args[:1])
+        if op in {"jmp", "jal", "call", "end", "nop", "li", "la", "movi", "pmovi", "pli", "pla"}:
+            return set()
+        if op in {"mov", "seqz"} and len(args) >= 2:
+            return self._registers_from_values(args[1:2])
+        if len(args) >= 3:
+            return self._registers_from_values(args[1:3])
+        if len(args) >= 2:
+            return self._registers_from_values(args[1:])
+        return set()
+
+    def _registers_from_values(self, values: List[object]) -> set[str]:
+        """Filtra operandos que realmente son registros."""
+
+        registers = set()
+        for value in values:
+            register = self._register_name(value)
+            if register:
+                registers.add(register)
+        return registers
+
+    def _registers_from_memory(self, operand: object) -> set[str]:
+        """Extrae el registro base de un operando tipo +offset(base)."""
+
+        text = str(operand)
+        match = re.search(r"\((\w+)\)", text)
+        register = self._register_name(match.group(1)) if match else None
+        return {register} if register else set()
+
+    def _register_name(self, value: object) -> Optional[str]:
+        """Normaliza operandos que tienen forma de registro."""
+
+        if not isinstance(value, str):
+            return None
+        name = value.lower()
+        if name == "zero":
+            return None
+        if re.fullmatch(r"r\d+|p\d+|sp|ra|pc|ax|bx|cx|dx|ex|fx|gx|hx", name):
+            return name
+        return None
 
     def _render_load_immediate_lines(
         self,

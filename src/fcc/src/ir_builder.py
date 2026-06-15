@@ -43,7 +43,7 @@ class IRBuilder:
     def build(self, ast: ProgramNode) -> IRProgram:
         """Entradas: AST. Salida: IRProgram. Uso: ir_driver.build_ir."""
         self.program = IRProgram()
-        # Primero se registran globales para mostrarlas en la IR.
+        # Primero se registran globales; no se emite codigo para ellas aqui.
         for declaration in ast.declarations:
             if isinstance(declaration, VarDeclNode):
                 for declarator in declaration.declarators:
@@ -71,6 +71,7 @@ class IRBuilder:
         if self.current is None:
             # Sin funcion activa no hay destino valido para TAC.
             return
+        # line/column viajan hasta diagnosticos del backend IR.
         self.current.emit(
             IRInstruction(
                 op=op,
@@ -127,6 +128,7 @@ class IRBuilder:
             return
 
         if isinstance(node, AssignmentNode):
+            # Asignaciones centralizan lvalue: variable, arreglo o puntero.
             self._emit_assignment(node)
             return
 
@@ -143,6 +145,7 @@ class IRBuilder:
             return
 
         if isinstance(node, ReturnNode):
+            # Return sin valor se representa con args vacio.
             args = [self._emit_expression(node.value)] if node.value is not None else []
             self._emit("return", args=args, node=node)
             return
@@ -161,6 +164,7 @@ class IRBuilder:
 
         if isinstance(node, ExpressionStmtNode):
             if node.expression is not None:
+                # Llamadas pueden tener efectos aunque se descarte el resultado.
                 self._emit_expression(node.expression, discard_result=True)
             return
 
@@ -201,9 +205,11 @@ class IRBuilder:
     def _emit_lvalue_store(self, target, value: str, node):
         """Entradas: destino, valor IR y nodo fuente. Salida: escritura TAC. Uso: asignaciones."""
         if isinstance(target, IdentifierNode):
+            # x = value se modela como assign directo.
             self._emit("assign", dest=target.name, args=[value], node=node)
             return
         if isinstance(target, IndexAccessNode):
+            # a[i] = value conserva base, indice y valor separados.
             base = self._emit_expression(target.target)
             index = self._emit_expression(target.index)
             self._emit("store_index", args=[base, index, value], node=node)
@@ -234,6 +240,7 @@ class IRBuilder:
             self._emit_label(branch_next)
 
         if node.else_block is not None:
+            # Else cae naturalmente despues de todos los elif fallidos.
             self._emit_block(node.else_block)
 
         self._emit_label(end_label)
@@ -304,6 +311,7 @@ class IRBuilder:
             return result
 
         if isinstance(node, BinaryOpNode):
+            # Toda operacion binaria produce un temporal TAC explicito.
             left = self._emit_expression(node.left)
             right = self._emit_expression(node.right)
             result = self._new_temp()

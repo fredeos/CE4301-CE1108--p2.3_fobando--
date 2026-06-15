@@ -1,5 +1,9 @@
 Reporte de optimizacion IR:
-  Nivel: O0
+  Nivel: O1
   Loop unrolling parcial: factor=1
-  Renombramiento de temporales/estaticos: no
-  Renombramientos aplicados: 0
+  Renombramiento de temporales/estaticos: si
+  Renombramientos aplicados: 11
+  Eliminación de código muerto: no
+  Instrucciones eliminadas por DCE: 0
+  Reordenamiento seguro: no
+  Instrucciones reordenadas: 0

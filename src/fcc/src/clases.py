@@ -60,7 +60,7 @@ INSTRUCTION_CLASSES = {
     "stvw": "clase3",
     "stvh": "clase3",
     "stvb": "clase3",
-    # ret / nop / end
+    # ret / nop / end no reciben operandos en assembly.
     "ret": "clase4",
     "nop": "clase4",
     "end": "clase4",

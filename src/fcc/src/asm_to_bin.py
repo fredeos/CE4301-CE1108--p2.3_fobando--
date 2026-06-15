@@ -181,6 +181,8 @@ class Instruction:
             return
 
         if op_clean == "end":
+            # end ocupa el mismo formato que nop, pero conserva el opcode
+            # para que encode_r escriba func7=0001111.
             self.op = "end"
             self.rd = "zero"
             self.rn = "zero"
@@ -289,7 +291,7 @@ class Instruction:
         self._resolve_regs()
         self._validate_isa_constraints()
 
-        tipo_r = {"add", "sub", "mul", "div", "mod", "and", "orr", "xor", "sll", "srl", "mov", "seq", "ret", "nop", "seqz", "end"}
+        tipo_r = {"add", "sub", "mul", "div", "mod", "and", "orr", "xor", "sll", "srl", "mov", "seq", "ret", "nop", "end", "seqz"}
         tipo_i = {"addi", "subi", "muli", "divi", "modi", "andi", "orri", "xori", "slli", "srli", "movi", "seqi", "li", "la"}
         tipo_m = {"ldw", "ldh", "ldb", "stw", "sth", "stb"}
         tipo_b = {"beq", "bne", "bgt", "blt", "bge", "ble", "beqz"}
@@ -804,4 +806,3 @@ def build_program_header(encoded_instructions: Iterable[str], data_blob: bytes, 
         code_base=0,
         data_base=data_base,
     )
-

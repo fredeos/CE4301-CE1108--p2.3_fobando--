@@ -1,0 +1,58 @@
+func transformar(n) -> int
+  t1 = 3
+  t2 = 2
+  base = t1
+  extra = t2
+  t3 = base + extra
+  suma = t3
+  t4 = n * suma
+  return t4
+
+func main() -> int
+  t1 = 0
+  t2 = 0
+  t3 = 5
+  i = t1
+  total = t2
+  limite = t3
+L1:
+  if i < limite goto L2
+  goto L3
+L2:
+  t5 = 10
+  t6 = 20
+  a = t5
+  b = t6
+  t7 = a + b
+  c = t7
+  param i
+  t8 = call transformar, 1
+  t = t8
+  if t > c goto L4
+  goto L5
+L4:
+  t10 = 1
+  t11 = 2
+  x = t10
+  y = t11
+  t12 = x + y
+  z = t12
+  t13 = total + z
+  total = t13
+  goto L6
+L5:
+  t14 = 4
+  t15 = 5
+  m = t14
+  n = t15
+  t16 = m * n
+  k = t16
+  t17 = total + k
+  total = t17
+L6:
+  t18 = 1
+  t19 = i + t18
+  i = t19
+  goto L1
+L3:
+  return total

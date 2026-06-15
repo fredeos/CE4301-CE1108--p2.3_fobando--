@@ -1,0 +1,86 @@
+bloques procesar_bloques:
+---------------------- inicio procesar_bloques_B0 ----------------------
+procesar_bloques_B0:
+  succ: procesar_bloques_while_cond_1
+  t1 = 0
+  total = t1
+  t2 = 0
+  i = t2
+  t3 = 0
+  i = t3
+----------------------- fin procesar_bloques_B0 ------------------------
+----------------- inicio procesar_bloques_while_cond_1 -----------------
+procesar_bloques_while_cond_1:
+  pred: procesar_bloques_B0, procesar_bloques_B2
+  succ: procesar_bloques_B2, procesar_bloques_while_end_2
+  t4 = 6
+  t5 = i < t4
+  if_false t5 goto procesar_bloques_while_end_2
+------------------ fin procesar_bloques_while_cond_1 -------------------
+---------------------- inicio procesar_bloques_B2 ----------------------
+procesar_bloques_B2:
+  pred: procesar_bloques_while_cond_1
+  succ: procesar_bloques_while_cond_1
+  t6 = bloques[i]
+  t7 = 2
+  t8 = t6 * t7
+  dobles[i] = t8
+  t9 = 1
+  t10 = i + t9
+  i = t10
+  goto procesar_bloques_while_cond_1
+----------------------- fin procesar_bloques_B2 ------------------------
+----------------- inicio procesar_bloques_while_end_2 ------------------
+procesar_bloques_while_end_2:
+  pred: procesar_bloques_while_cond_1
+  t11 = 0
+  t12 = dobles[t11]
+  t13 = 1
+  t14 = dobles[t13]
+  t15 = t12 + t14
+  t16 = 2
+  t17 = dobles[t16]
+  t18 = t15 + t17
+  total = t18
+  t19 = 3
+  t20 = dobles[t19]
+  t21 = total + t20
+  total = t21
+  t22 = 4
+  t23 = dobles[t22]
+  t24 = total + t23
+  total = t24
+  t25 = 5
+  t26 = dobles[t25]
+  t27 = total + t26
+  total = t27
+  return total
+------------------- fin procesar_bloques_while_end_2 -------------------
+
+bloques main:
+---------------------------- inicio main_B0 ----------------------------
+main_B0:
+  calls: procesar_bloques_B0
+  t1 = 10
+  t2 = 0
+  bloques[t2] = t1
+  t3 = 20
+  t4 = 1
+  bloques[t4] = t3
+  t5 = 30
+  t6 = 2
+  bloques[t6] = t5
+  t7 = 5
+  t8 = 3
+  bloques[t8] = t7
+  t9 = 15
+  t10 = 4
+  bloques[t10] = t9
+  t11 = 25
+  t12 = 5
+  bloques[t12] = t11
+  param bloques
+  t13 = call procesar_bloques, 1
+  resultado_loop_unrolling = t13
+  return resultado_loop_unrolling
+----------------------------- fin main_B0 ------------------------------

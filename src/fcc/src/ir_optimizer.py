@@ -5,6 +5,8 @@ import re
 from typing import Dict, List, Optional, Set, Tuple
 
 from ir_nodes import IRFunction, IRInstruction, IRProgram, clone_instructions
+from dead_code_elimination import DeadCodeEliminator
+from instruction_reordering import SafeInstructionReorderer
 
 
 UNROLL_BODY_INSTRUCTION_BUDGET = 96
@@ -22,14 +24,36 @@ class LoopUnrollLimit:
     label_name: str
     max_factor: int
     reason: Optional[str] = None
+    trip_count: Optional[int] = None
 
     def text(self) -> str:
         """Entradas: limite. Salida: linea legible. Uso: report.text."""
         if self.max_factor >= 2:
+            trip = f", N={self.trip_count}" if self.trip_count is not None else ""
             if self.reason:
-                return f"{self.function_name}:{self.label_name} max={self.max_factor} ({self.reason})"
-            return f"{self.function_name}:{self.label_name} max={self.max_factor}"
+                return f"{self.function_name}:{self.label_name} max={self.max_factor}{trip} ({self.reason})"
+            return f"{self.function_name}:{self.label_name} max={self.max_factor}{trip}"
         return f"{self.function_name}:{self.label_name} no aplicable ({self.reason})"
+
+
+@dataclass
+class LoopUnrollMetric:
+    """Loop realmente desenrollado.
+
+    Entradas: funcion, label, factor y N opcional.
+    Salida: dato para metricas.
+    Uso: OptimizationReport y compile_metrics.
+    """
+    function_name: str
+    label_name: str
+    factor: int
+    trip_count: Optional[int] = None
+
+    def text(self) -> str:
+        """Entradas: loop. Salida: texto corto. Uso: report.text."""
+        trip = f", N={self.trip_count}" if self.trip_count is not None else ""
+        return f"{self.function_name}:{self.label_name} x{self.factor}{trip}"
+
 
 @dataclass
 class OptimizationReport:
@@ -40,9 +64,13 @@ class OptimizationReport:
     Uso: fcc.py, .opt.report y consola.
     """
     loop_unrolled: List[str] = field(default_factory=list)
+    unrolled_loops: List[LoopUnrollMetric] = field(default_factory=list)
     loop_skipped: List[str] = field(default_factory=list)
     unroll_limits: List[str] = field(default_factory=list)
     renamed_defs: int = 0
+    dead_code_removed: int = 0
+    asm_cleanup_removed: int = 0
+    reordered_instructions: int = 0
     opt_level: str = "O0"
     unroll_factor: int = 1
     rename_statics: bool = False
@@ -54,6 +82,11 @@ class OptimizationReport:
         lines.append(f"  Loop unrolling parcial: factor={self.unroll_factor}")
         lines.append(f"  Renombramiento de temporales/estaticos: {'si' if self.rename_statics else 'no'}")
         lines.append(f"  Renombramientos aplicados: {self.renamed_defs}")
+        lines.append(f"  Limpieza ASM por renombramiento: {self.asm_cleanup_removed}")
+        lines.append(f"  Eliminación de código muerto: {'sí' if self.opt_level == 'O3' else 'no'}")
+        lines.append(f"  Instrucciones eliminadas por DCE: {self.dead_code_removed}")
+        lines.append(f"  Reordenamiento seguro: {'sí' if self.opt_level == 'O4' else 'no'}")
+        lines.append(f"  Instrucciones reordenadas: {self.reordered_instructions}")
         if self.loop_unrolled:
             lines.append("  Loops desenrollados:")
             for item in self.loop_unrolled:
@@ -101,6 +134,7 @@ class IROptimizer:
             self.report.unroll_limits = [limit.text() for limit in limits]
             program_max = max((limit.max_factor for limit in limits), default=1)
             if program_max < unroll_factor:
+                # Se falla antes de clonar codigo para no generar IR invalida.
                 details = "; ".join(limit.text() for limit in limits) or "sin loops aplicables"
                 raise ValueError(
                     f"--unroll-factor {unroll_factor} excede el maximo aplicable para este programa "
@@ -118,14 +152,27 @@ class IROptimizer:
                 instructions=clone_instructions(function.instructions),
             )
             if unroll_factor > 1:
+                # O2: solo este bloque transforma loops.
                 current = self.unroll_loops(
                     current,
                     unroll_factor,
                     heuristic=heuristic,
                 )
             if rename_statics:
+                # O1: versiona definiciones para romper WAR/WAW falsas.
                 current = self.rename_static_dependencies(current, protected_names=global_names)
             optimized.functions.append(current)
+
+        # El dce va fuera del for, ya que recibe un IRProgram completo
+        if opt_level == "O3":
+            # O3 queda aislado en su modulo, aplicado sobre el programa completo.
+            optimized, dce_result = DeadCodeEliminator().eliminate(optimized)
+            self.report.dead_code_removed = dce_result.removed_count
+
+        if opt_level == "O4":
+            # O4 reordena despues de las transformaciones previas del nivel.
+            optimized, reordered_count = SafeInstructionReorderer().reorder_program(optimized)
+            self.report.reordered_instructions = reordered_count
         return optimized, self.report
 
     def analyze_unroll_limits(self, program: IRProgram, heuristic: bool = True) -> List[LoopUnrollLimit]:
@@ -152,8 +199,17 @@ class IROptimizer:
                 cond_segment = instructions[start + 1:branch_index + 1]
                 body_segment = self._loop_body_segment(instructions, branch_index, back_index)
                 pre_segment = instructions[:start]
+                # El limite considera trip count, dependencias y heuristica de tamano.
                 max_factor, reason = self._max_unroll_factor(pre_segment, cond_segment, body_segment, heuristic)
-                limits.append(LoopUnrollLimit(function.name, label_name, max_factor, reason))
+                limits.append(
+                    LoopUnrollLimit(
+                        function.name,
+                        label_name,
+                        max_factor,
+                        reason,
+                        self._loop_trip_count(pre_segment, cond_segment, body_segment),
+                    )
+                )
                 index = back_index + 1
         return limits
 
@@ -209,8 +265,16 @@ class IROptimizer:
                 result.extend(self._clone_loop_segment(cond_segment, suffix))
                 result.extend(self._clone_loop_segment(body_segment, suffix))
 
+            # El salto original queda al final para regresar a la condicion.
             result.append(back_jump.clone())
-            self.report.loop_unrolled.append(f"{function.name}:{label_name} x{factor}")
+            metric = LoopUnrollMetric(
+                function.name,
+                label_name,
+                factor,
+                self._loop_trip_count(pre_segment, cond_segment, body_segment),
+            )
+            self.report.unrolled_loops.append(metric)
+            self.report.loop_unrolled.append(metric.text())
             index = back_index + 1
 
         return IRFunction(function.name, list(function.params), function.return_type, result)
@@ -331,6 +395,7 @@ class IROptimizer:
 
         trip_count = self._infer_trip_count(pre_segment, cond_segment, body_segment, loop_var)
         if heuristic:
+            # La heuristica evita que el codigo crezca mas que el presupuesto.
             max_factor = UNROLL_BODY_INSTRUCTION_BUDGET // len(body_segment)
             if trip_count is not None:
                 max_factor = min(max_factor, trip_count)
@@ -371,6 +436,18 @@ class IROptimizer:
                 # Patron k = k + c / k = k - c: es el contador del loop.
                 return instruction.dest
         return None
+
+    def _loop_trip_count(
+        self,
+        pre_segment: List[IRInstruction],
+        cond_segment: List[IRInstruction],
+        body_segment: List[IRInstruction],
+    ) -> Optional[int]:
+        """Entradas: segmentos del loop. Salida: N constante o None. Uso: reportes/metricas."""
+        loop_var = self._infer_loop_variable(body_segment)
+        if loop_var is None:
+            return None
+        return self._infer_trip_count(pre_segment, cond_segment, body_segment, loop_var)
 
     def _infer_trip_count(
         self,
