@@ -34,6 +34,7 @@ TEMP_REGS = [f"r{i}" for i in range(16)]
 SECURE_REGS = ["ax", "bx", "cx", "dx", "ex", "fx", "gx", "hx"]
 WRITABLE_SECURE_REGS = SECURE_REGS[1:]
 SAVE_REGS = ["ra"]
+FRAME_LOCAL_PADDING_WORDS = 1
 BRANCH_IMMEDIATE_BITS = 12
 JUMP_IMMEDIATE_BITS = 21
 SIGNED_IMMEDIATE_MIN = -(1 << 11)
@@ -176,7 +177,9 @@ class AssemblyGenerator:
         self.current_call_spill_max = 0
         self.current_homed_params: set[str] = set()
 
-        self.current_saved_area = len(SAVE_REGS) * WORD_SIZE
+        # Una palabra libre separa los registros salvados del primer local.
+        # Evita que arreglos locales pasados por referencia pierdan su celda 0.
+        self.current_saved_area = (len(SAVE_REGS) + FRAME_LOCAL_PADDING_WORDS) * WORD_SIZE
         self.current_local_size = 0
         self.current_param_shadow_offsets: Dict[str, int] = {}
         self.emit_entrypoint = True
@@ -951,8 +954,9 @@ class AssemblyGenerator:
             if isinstance(decl, FunctionDeclNode):
                 self._emit_function(decl)
 
-        # end marca el cierre fisico y debe quedar despues de todo el codigo.
-        self._emit_end_marker(comment="cierre fisico del stream de instrucciones")
+        if not self.emit_entrypoint:
+            # Sin __init__, end queda al final fisico del stream generado.
+            self._emit_end_marker()
 
     def _emit_end_marker(self, comment: Optional[str] = None):
         """Emite el relleno obligatorio y la marca end final."""
