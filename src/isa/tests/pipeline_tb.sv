@@ -3,7 +3,7 @@
 module pipeline_tb ();
     logic clk, rst;
 
-    int cycles = 1000;
+    int cycles = 100000;
     int factor = 500;
     logic [31:0] cycle;
     logic [31:0] pmu_val;
@@ -11,20 +11,10 @@ module pipeline_tb ();
     int i = 0;
     int j = 0;
     int secure_ending_cycles = 100;
-
-
-    int cache_l1_accesses = 0;
-    int cache_l1_misses = 0;
-
-    int cache_l2_accesses = 0;
-    int cache_l2_misses = 0;
-
-    int miss_rate_l1 = 0;
-    int miss_rate_l2 = 0;
+    int total_instr       = 0;
+    int total_cycles      = 0;
+    real ipc               = 0;
     int amat = 0;
-
-
-
 
     always #5 clk = ~clk;
     always_ff @(posedge clk) cycle <= cycle + 1;
@@ -59,7 +49,6 @@ module pipeline_tb ();
         end
 
 
-        
         // El while ahora depende de una condición de tiempo y del valor
         while (j < secure_ending_cycles) begin
             @(posedge clk);
@@ -75,57 +64,31 @@ module pipeline_tb ();
 
         //$display("\n--- Reporte de Desempeño (PMU) ---");
 
-        // $display("\n--- Cache L1 ---");
+        $display("\n--- General ---");
 
-        // force _cpu._pmu.read_addr = 5'd8; #10; pmu_val = _cpu._pmu.read_data;
-        // cache_l1_accesses = _cpu._pmu.read_data;
+        force _cpu._pmu.read_addr = 5'd0; @(posedge clk); #1;
+        pmu_val = _cpu._pmu.read_data - secure_ending_cycles;
+        total_cycles = int'(_cpu._pmu.read_data);
+        $display("Total Cycles              : %0d", pmu_val);
 
-        // $display("Total L1 Accesses : %0d", pmu_val);
+        force _cpu._pmu.read_addr = 5'd11; @(posedge clk); #1;
+        pmu_val = _cpu._pmu.read_data;
+        total_instr = int'(_cpu._pmu.read_data);
+        $display("Total Instructions        : %0d", pmu_val);
 
-        // force _cpu._pmu.read_addr = 5'd2; #10; pmu_val = _cpu._pmu.read_data;
-        // $display("Total L1 Misses : %0d", pmu_val);
-        // cache_l1_misses = _cpu._pmu.read_data;
-        
-        // force _cpu._pmu.read_addr = 5'd3; #10; pmu_val = _cpu._pmu.read_data;
-        // $display("L1 Miss Read  : %0d", pmu_val);
+        ipc = real'(total_instr) / real'(total_cycles);
+        $display("IPC                       : %0.3f", ipc);
 
-        // force _cpu._pmu.read_addr = 5'd4; #10; pmu_val = _cpu._pmu.read_data;
-        // $display("L1 Miss Write  : %0d", pmu_val);
+        force _cpu._pmu.read_addr = 5'd12; @(posedge clk); #1;
+        pmu_val = _cpu._pmu.read_data;
+        $display("Total Stalls for control  : %0d", pmu_val);
 
-        // miss_rate_l1 = cache_l1_misses / cache_l1_accesses;
-        // $display("Miss Rate L1 : %0d", miss_rate_l1);
+        force _cpu._pmu.read_addr = 5'd10; @(posedge clk); #1;
+        pmu_val = _cpu._pmu.read_data;
+        $display("Total Memory Accesses     : %0d", pmu_val);
 
-
-        // $display("\n--- Cache L2 ---");
-
-        // force _cpu._pmu.read_addr = 5'd9; #10; pmu_val = _cpu._pmu.read_data;
-        // $display("Total L2 Accesses : %0d", pmu_val);
-        // cache_l2_accesses = _cpu._pmu.read_data;
-        
-        // force _cpu._pmu.read_addr = 5'd5; #10; pmu_val = _cpu._pmu.read_data;
-        // $display("Total L2 Misses : %0d", pmu_val);
-        // cache_l2_misses = _cpu._pmu.read_data;
-
-        
-        // force _cpu._pmu.read_addr = 5'd6; #10; pmu_val = _cpu._pmu.read_data;
-        // $display("L2 Miss Read  : %0d", pmu_val);
-
-        // force _cpu._pmu.read_addr = 5'd7; #10; pmu_val = _cpu._pmu.read_data;
-        // $display("L2 Miss Write  : %0d", pmu_val);
-
-        // miss_rate_l2 = cache_l2_misses / cache_l2_accesses;
-        // $display("Miss Rate L2 : %0d", miss_rate_l2);
-
-        // $display("\n--- General ---");
-
-        // force _cpu._pmu.read_addr = 5'd1; #10; pmu_val = _cpu._pmu.read_data;
-        // $display("Total Misses  : %0d", pmu_val);
-
-        // force _cpu._pmu.read_addr = 5'd0; #10; pmu_val = _cpu._pmu.read_data - secure_ending_cycles;
-        // $display("Total Cycles  : %0d", pmu_val);
-
-        // amat = (_cpu._packed_mem.L1_LATENCY + miss_rate_l1 * (_cpu._packed_mem.L2_LATENCY + miss_rate_l2 * _cpu._packed_mem.MEM_LATENCY));
-        // $display("AMAT  : %0d", amat);
+        amat = _cpu._ram.LATENCY;
+        $display("AMAT  : %0d", amat);
 
 
 

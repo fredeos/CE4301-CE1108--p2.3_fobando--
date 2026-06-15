@@ -1,0 +1,26 @@
+[*]
+[*] GTKWave Analyzer v3.3.100 (w)1999-2019 BSI
+[*] Mon Jun 15 04:29:04 2026
+[*]
+[dumpfile] "B:\workbench\repos\CE4301-CE1108--p2.3_fobando--\config\gen\pipeline_wcache.vcd"
+[savefile] "B:\workbench\repos\CE4301-CE1108--p2.3_fobando--\config\pipeline.gtkw"
+[timestart] 2487500000000
+[size] 1536 793
+[pos] -1 -1
+*-35.200001 2597800000000 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
+[treeopen] pipeline_wcache_tb.
+[sst_width] 246
+[signals_width] 303
+[sst_expanded] 1
+[sst_vpaned_height] 272
+@28
+pipeline_wcache_tb.clk
+pipeline_wcache_tb.rst
+@22
+pipeline_wcache_tb._cpu.IF_INSTR[31:0]
+pipeline_wcache_tb._cpu.ID_INSTR[31:0]
+pipeline_wcache_tb._cpu.EX_INSTR[31:0]
+pipeline_wcache_tb._cpu.MEM_INSTR[31:0]
+pipeline_wcache_tb._cpu.WB_INSTR[31:0]
+[pattern_trace] 1
+[pattern_trace] 0

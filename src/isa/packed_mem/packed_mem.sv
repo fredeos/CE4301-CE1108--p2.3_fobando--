@@ -437,8 +437,8 @@ module packed_mem #(
     assign read_access[2] = (rd_state == 4'b0101) & (rd_prev_state == 4'b0011);
 
     // 2. write-in-use signals
-    assign write_access[0] = dequeue[0] & L1_write_hit;
-    assign write_access[1] = dequeue[1] & L2_write_hit;
-    assign write_access[2] = dequeue[2] & M_write_hit;
+    assign write_access[0] = dequeue[0];
+    assign write_access[1] = dequeue[1];
+    assign write_access[2] = dequeue[2];
 
 endmodule
