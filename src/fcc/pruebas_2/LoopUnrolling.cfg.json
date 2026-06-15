@@ -1,0 +1,43 @@
+{
+  "nodes": [
+    {
+      "id": "procesar_bloques_B0"
+    },
+    {
+      "id": "procesar_bloques_while_cond_1"
+    },
+    {
+      "id": "procesar_bloques_B2"
+    },
+    {
+      "id": "procesar_bloques_while_end_2"
+    },
+    {
+      "id": "main_B0"
+    }
+  ],
+  "edges": [
+    {
+      "from": "procesar_bloques_B0",
+      "to": "procesar_bloques_while_cond_1"
+    },
+    {
+      "from": "procesar_bloques_while_cond_1",
+      "to": "procesar_bloques_while_end_2",
+      "condition": "t5 == 0"
+    },
+    {
+      "from": "procesar_bloques_while_cond_1",
+      "to": "procesar_bloques_B2",
+      "condition": "t5 != 0"
+    },
+    {
+      "from": "procesar_bloques_B2",
+      "to": "procesar_bloques_while_cond_1"
+    },
+    {
+      "from": "main_B0",
+      "to": "procesar_bloques_B0"
+    }
+  ]
+}

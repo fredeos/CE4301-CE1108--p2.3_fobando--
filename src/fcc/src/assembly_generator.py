@@ -183,6 +183,7 @@ class AssemblyGenerator:
         self.current_local_size = 0
         self.current_param_shadow_offsets: Dict[str, int] = {}
         self.emit_entrypoint = True
+        self.emit_end_marker = False
         self.stack_base_address = DATA_BASE
 
     # API PRINCIPAL
@@ -192,6 +193,7 @@ class AssemblyGenerator:
         program: ProgramNode,
         symbol_table: SymbolTable,
         emit_entrypoint: bool = True,
+        emit_end_marker: bool = False,
     ) -> AssemblyResult:
         """Genera ensamblador para un programa completo."""
 
@@ -199,6 +201,7 @@ class AssemblyGenerator:
         self.scope_by_name = {scope.name: scope for scope in symbol_table.all_scopes}
         self.current_scope = symbol_table.global_scope
         self.emit_entrypoint = emit_entrypoint
+        self.emit_end_marker = emit_end_marker
 
         self._emit_comment("; Codigo ensamblador generado por FCC")
         self._emit_comment("; ISA base: F32IS (isa.md)")
@@ -946,17 +949,27 @@ class AssemblyGenerator:
 
             self._emit("mov", "p0", "zero", comment="resultado de programa por defecto")
             self._emit("call", LabelRef("main"), comment="entrada principal")
-            self._emit_end_marker(comment="fin real del programa tras retornar de main")
-            self._emit_label("__end_fallback__")
-            self._emit("jmp", LabelRef("__end_fallback__"), comment="respaldo si end se interpreta como nop")
+            self._emit_program_stop()
 
         for decl in program.declarations:
             if isinstance(decl, FunctionDeclNode):
                 self._emit_function(decl)
 
-        if not self.emit_entrypoint:
+        if not self.emit_entrypoint and self.emit_end_marker:
             # Sin __init__, end queda al final fisico del stream generado.
             self._emit_end_marker()
+
+    def _emit_program_stop(self):
+        """Cierra el programa con end o con halt compatible sin end."""
+
+        if self.emit_end_marker:
+            self._emit_end_marker(comment="fin real del programa tras retornar de main")
+            self._emit_label("__end_fallback__")
+            self._emit("jmp", LabelRef("__end_fallback__"), comment="respaldo si end se interpreta como nop")
+            return
+
+        self._emit_label("__halt_no_end__")
+        self._emit("jmp", LabelRef("__halt_no_end__"), comment="fin sin instruccion end")
 
     def _emit_end_marker(self, comment: Optional[str] = None):
         """Emite el relleno obligatorio y la marca end final."""
@@ -2008,6 +2021,7 @@ class AssemblyGenerator:
         """Resuelve labels, direcciones y pseudos para producir texto final."""
 
         self._remove_redundant_fallthrough_jumps()
+        self._insert_load_use_waits()
 
         last_signature = None
         item_sizes: List[int] = []
@@ -2169,6 +2183,99 @@ class AssemblyGenerator:
             return []
 
         return lines
+
+    def _insert_load_use_waits(self):
+        """Inserta burbujas cuando un load alimenta la siguiente instruccion."""
+
+        scheduled: List[Union[Instruction, LabelMarker, str]] = []
+        index = 0
+        while index < len(self.items):
+            item = self.items[index]
+            scheduled.append(item)
+
+            if isinstance(item, Instruction):
+                loaded = self._loaded_registers(item)
+                consumer = self._next_instruction(index + 1)
+                if loaded and consumer is not None and loaded & self._source_registers(consumer):
+                    # La carga entrega el dato en MEM/WB; el consumidor inmediato necesita una burbuja.
+                    scheduled.append(Instruction("nop", comment="espera load-use"))
+
+            index += 1
+
+        self.items = scheduled
+
+    def _next_instruction(self, start: int) -> Optional[Instruction]:
+        """Busca la siguiente instruccion real ignorando labels y comentarios."""
+
+        for item in self.items[start:]:
+            if isinstance(item, Instruction):
+                return item
+        return None
+
+    def _loaded_registers(self, instruction: Instruction) -> set[str]:
+        """Devuelve el registro escrito por una carga de memoria."""
+
+        op = instruction.op.lstrip("@").lower()
+        if not op.startswith("ld") or not instruction.args:
+            return set()
+        register = self._register_name(instruction.args[0])
+        return {register} if register else set()
+
+    def _source_registers(self, instruction: Instruction) -> set[str]:
+        """Devuelve los registros leidos por una instruccion para detectar RAW."""
+
+        op = instruction.op.lstrip("@").lower()
+        args = instruction.args
+
+        if op == "ret":
+            return {"ra"}
+        if op.startswith("st") and len(args) >= 2:
+            return self._registers_from_values([args[0]]) | self._registers_from_memory(args[1])
+        if op.startswith("ld") and len(args) >= 2:
+            return self._registers_from_memory(args[1])
+        if op in {"beq", "bne", "bgt", "blt", "bge", "ble"} and len(args) >= 2:
+            return self._registers_from_values(args[:2])
+        if op == "beqz" and args:
+            return self._registers_from_values(args[:1])
+        if op in {"jmp", "jal", "call", "end", "nop", "li", "la", "movi", "pmovi", "pli", "pla"}:
+            return set()
+        if op in {"mov", "seqz"} and len(args) >= 2:
+            return self._registers_from_values(args[1:2])
+        if len(args) >= 3:
+            return self._registers_from_values(args[1:3])
+        if len(args) >= 2:
+            return self._registers_from_values(args[1:])
+        return set()
+
+    def _registers_from_values(self, values: List[object]) -> set[str]:
+        """Filtra operandos que realmente son registros."""
+
+        registers = set()
+        for value in values:
+            register = self._register_name(value)
+            if register:
+                registers.add(register)
+        return registers
+
+    def _registers_from_memory(self, operand: object) -> set[str]:
+        """Extrae el registro base de un operando tipo +offset(base)."""
+
+        text = str(operand)
+        match = re.search(r"\((\w+)\)", text)
+        register = self._register_name(match.group(1)) if match else None
+        return {register} if register else set()
+
+    def _register_name(self, value: object) -> Optional[str]:
+        """Normaliza operandos que tienen forma de registro."""
+
+        if not isinstance(value, str):
+            return None
+        name = value.lower()
+        if name == "zero":
+            return None
+        if re.fullmatch(r"r\d+|p\d+|sp|ra|pc|ax|bx|cx|dx|ex|fx|gx|hx", name):
+            return name
+        return None
 
     def _render_load_immediate_lines(
         self,

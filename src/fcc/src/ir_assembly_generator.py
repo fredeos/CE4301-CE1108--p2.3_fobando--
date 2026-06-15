@@ -45,12 +45,14 @@ class IRAssemblyGenerator(AssemblyGenerator):
         ast_program: ProgramNode,
         symbol_table: SymbolTable,
         emit_entrypoint: bool = True,
+        emit_end_marker: bool = False,
     ) -> AssemblyResult:
         """Entradas: IR, AST y simbolos. Salida: ASM o diagnosticos. Uso: fcc.py."""
         self.symbol_table = symbol_table
         self.scope_by_name = {scope.name: scope for scope in symbol_table.all_scopes}
         self.current_scope = symbol_table.global_scope
         self.emit_entrypoint = emit_entrypoint
+        self.emit_end_marker = emit_end_marker
         # El AST se conserva para inicializadores, secure y firmas.
         self.function_ast_by_name = {
             decl.name: decl for decl in ast_program.declarations if isinstance(decl, FunctionDeclNode)
@@ -94,16 +96,15 @@ class IRAssemblyGenerator(AssemblyGenerator):
 
             self._emit("mov", "p0", "zero", comment="resultado de programa por defecto")
             self._emit("call", LabelRef("main"), comment="entrada principal")
-            self._emit_end_marker(comment="fin real del programa tras retornar de main")
-            self._emit_label("__end_fallback__")
-            self._emit("jmp", LabelRef("__end_fallback__"), comment="respaldo si end se interpreta como nop")
+            self._emit_program_stop()
 
         for function in ir_program.functions:
             # Se emiten todas las funciones despues del punto de entrada.
             self._emit_ir_function(function)
 
-        # end marca el cierre fisico y debe quedar despues de todo el codigo IR.
-        self._emit_end_marker(comment="cierre fisico del stream IR")
+        if not self.emit_entrypoint and self.emit_end_marker:
+            # Sin __init__, end queda al final fisico del stream generado.
+            self._emit_end_marker()
 
     def _emit_end_marker(self, comment: Optional[str] = None):
         """Entradas: comentario opcional. Salida: 3 nop y end. Uso: cierre ASM."""

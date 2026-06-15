@@ -69,6 +69,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
               fcc main.f --ir-backend -O1 -s
               fcc main.f --optimized-ir -O3
               fcc main.f --optimized-ir -O4
+              fcc main.f -O2 --unroll-factor 3 -s
+              fcc main.f -O2 --unroll-factor 3 --with-end -s
             """
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -205,6 +207,21 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "--ir-backend",
         action="store_true",
         help="Genera ensamblador/binario desde la IR seleccionada por -O en vez de hacerlo directamente desde el AST.",
+    )
+    end_group = parser.add_mutually_exclusive_group()
+    end_group.add_argument(
+        "--with-end",
+        "--end",
+        action="store_true",
+        dest="emit_end",
+        default=False,
+        help="Genera la instruccion end en __init__ con sus 3 nop previos para simuladores que ya soportan end.",
+    )
+    end_group.add_argument(
+        "--no-end",
+        action="store_false",
+        dest="emit_end",
+        help="No genera la instruccion end; despues de main usa un salto infinito compatible con simuladores sin end. Es el modo por defecto.",
     )
     return parser
 
@@ -581,7 +598,12 @@ def main():
     if use_ir_backend:
         ir_program = build_ir(ast)
         # La version base sirve para medir "Antes: sin optimizacion".
-        base_assembly_result = IRAssemblyGenerator().generate_from_ir(ir_program, ast, semantic_result.symbol_table)
+        base_assembly_result = IRAssemblyGenerator().generate_from_ir(
+            ir_program,
+            ast,
+            semantic_result.symbol_table,
+            emit_end_marker=args.emit_end,
+        )
         if base_assembly_result.has_errors:
             for diagnostic in base_assembly_result.diagnostics:
                 print(format_codegen_error(diagnostic))
@@ -593,12 +615,17 @@ def main():
         if optimization_enabled(opt_options):
             write_optimized_ir_artifacts(input_path, program_for_backend, report)
         generator = IRAssemblyGenerator()
-        assembly_result = generator.generate_from_ir(program_for_backend, ast, semantic_result.symbol_table)
+        assembly_result = generator.generate_from_ir(
+            program_for_backend,
+            ast,
+            semantic_result.symbol_table,
+            emit_end_marker=args.emit_end,
+        )
         if args.verbose:
             print(report.text())
     else:
         generator = AssemblyGenerator()
-        assembly_result = generator.generate(ast, semantic_result.symbol_table)
+        assembly_result = generator.generate(ast, semantic_result.symbol_table, emit_end_marker=args.emit_end)
         base_assembly_result = assembly_result
     if assembly_result.has_errors:
         for diagnostic in assembly_result.diagnostics:

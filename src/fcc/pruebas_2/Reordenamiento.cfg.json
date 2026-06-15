@@ -1,0 +1,70 @@
+{
+  "nodes": [
+    {
+      "id": "analizar_sensor_reordenado_B0"
+    },
+    {
+      "id": "analizar_sensor_reordenado_while_cond_1"
+    },
+    {
+      "id": "analizar_sensor_reordenado_B2"
+    },
+    {
+      "id": "analizar_sensor_reordenado_B3"
+    },
+    {
+      "id": "analizar_sensor_reordenado_if_next_4"
+    },
+    {
+      "id": "analizar_sensor_reordenado_if_end_3"
+    },
+    {
+      "id": "analizar_sensor_reordenado_while_end_2"
+    },
+    {
+      "id": "main_B0"
+    }
+  ],
+  "edges": [
+    {
+      "from": "analizar_sensor_reordenado_B0",
+      "to": "analizar_sensor_reordenado_while_cond_1"
+    },
+    {
+      "from": "analizar_sensor_reordenado_while_cond_1",
+      "to": "analizar_sensor_reordenado_while_end_2",
+      "condition": "t3 == 0"
+    },
+    {
+      "from": "analizar_sensor_reordenado_while_cond_1",
+      "to": "analizar_sensor_reordenado_B2",
+      "condition": "t3 != 0"
+    },
+    {
+      "from": "analizar_sensor_reordenado_B2",
+      "to": "analizar_sensor_reordenado_if_next_4",
+      "condition": "t14 == 0"
+    },
+    {
+      "from": "analizar_sensor_reordenado_B2",
+      "to": "analizar_sensor_reordenado_B3",
+      "condition": "t14 != 0"
+    },
+    {
+      "from": "analizar_sensor_reordenado_B3",
+      "to": "analizar_sensor_reordenado_if_end_3"
+    },
+    {
+      "from": "analizar_sensor_reordenado_if_next_4",
+      "to": "analizar_sensor_reordenado_if_end_3"
+    },
+    {
+      "from": "analizar_sensor_reordenado_if_end_3",
+      "to": "analizar_sensor_reordenado_while_cond_1"
+    },
+    {
+      "from": "main_B0",
+      "to": "analizar_sensor_reordenado_B0"
+    }
+  ]
+}

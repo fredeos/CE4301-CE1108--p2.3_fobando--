@@ -1,0 +1,162 @@
+bloques multiplicacion_matrices:
+------------------ inicio multiplicacion_matrices_B0 -------------------
+multiplicacion_matrices_B0:
+  succ: multiplicacion_matrices_for_cond_1
+  t1 = 2
+  filas = t1
+  t2 = 2
+  columnas = t2
+  t3 = 2
+  comun = t3
+  t4 = 0
+  total_operaciones = t4
+  t5 = 0
+  i = t5
+-------------------- fin multiplicacion_matrices_B0 --------------------
+-------------- inicio multiplicacion_matrices_for_cond_1 ---------------
+multiplicacion_matrices_for_cond_1:
+  pred: multiplicacion_matrices_B0, multiplicacion_matrices_for_update_2
+  succ: multiplicacion_matrices_B2, multiplicacion_matrices_for_end_3
+  t6 = i < filas
+  if_false t6 goto multiplicacion_matrices_for_end_3
+---------------- fin multiplicacion_matrices_for_cond_1 ----------------
+------------------ inicio multiplicacion_matrices_B2 -------------------
+multiplicacion_matrices_B2:
+  pred: multiplicacion_matrices_for_cond_1
+  succ: multiplicacion_matrices_for_cond_4
+  t9 = 0
+  j = t9
+-------------------- fin multiplicacion_matrices_B2 --------------------
+-------------- inicio multiplicacion_matrices_for_cond_4 ---------------
+multiplicacion_matrices_for_cond_4:
+  pred: multiplicacion_matrices_B2, multiplicacion_matrices_for_update_5
+  succ: multiplicacion_matrices_B4, multiplicacion_matrices_for_end_6
+  t10 = j < columnas
+  if_false t10 goto multiplicacion_matrices_for_end_6
+---------------- fin multiplicacion_matrices_for_cond_4 ----------------
+------------------ inicio multiplicacion_matrices_B4 -------------------
+multiplicacion_matrices_B4:
+  pred: multiplicacion_matrices_for_cond_4
+  succ: multiplicacion_matrices_for_cond_7
+  t12 = 0
+  suma = t12
+  t13 = 0
+  k = t13
+-------------------- fin multiplicacion_matrices_B4 --------------------
+-------------- inicio multiplicacion_matrices_for_cond_7 ---------------
+multiplicacion_matrices_for_cond_7:
+  pred: multiplicacion_matrices_B4, multiplicacion_matrices_for_update_8
+  succ: multiplicacion_matrices_B6, multiplicacion_matrices_for_end_9
+  t14 = k < comun
+  if_false t14 goto multiplicacion_matrices_for_end_9
+---------------- fin multiplicacion_matrices_for_cond_7 ----------------
+------------------ inicio multiplicacion_matrices_B6 -------------------
+multiplicacion_matrices_B6:
+  pred: multiplicacion_matrices_for_cond_7
+  succ: multiplicacion_matrices_for_update_8
+  t17 = A[i]
+  t18 = t17[k]
+  t19 = B[k]
+  t20 = t19[j]
+  t21 = t18 * t20
+  t22 = suma + t21
+  suma = t22
+  t23 = 1
+  t24 = total_operaciones + t23
+  total_operaciones = t24
+-------------------- fin multiplicacion_matrices_B6 --------------------
+------------- inicio multiplicacion_matrices_for_update_8 --------------
+multiplicacion_matrices_for_update_8:
+  pred: multiplicacion_matrices_B6
+  succ: multiplicacion_matrices_for_cond_7
+  t25 = 1
+  t26 = k + t25
+  k = t26
+  goto multiplicacion_matrices_for_cond_7
+--------------- fin multiplicacion_matrices_for_update_8 ---------------
+--------------- inicio multiplicacion_matrices_for_end_9 ---------------
+multiplicacion_matrices_for_end_9:
+  pred: multiplicacion_matrices_for_cond_7
+  succ: multiplicacion_matrices_for_update_5
+  t27 = C[i]
+  t27[j] = suma
+---------------- fin multiplicacion_matrices_for_end_9 -----------------
+------------- inicio multiplicacion_matrices_for_update_5 --------------
+multiplicacion_matrices_for_update_5:
+  pred: multiplicacion_matrices_for_end_9
+  succ: multiplicacion_matrices_for_cond_4
+  t30 = 1
+  t31 = j + t30
+  j = t31
+  goto multiplicacion_matrices_for_cond_4
+--------------- fin multiplicacion_matrices_for_update_5 ---------------
+--------------- inicio multiplicacion_matrices_for_end_6 ---------------
+multiplicacion_matrices_for_end_6:
+  pred: multiplicacion_matrices_for_cond_4
+  succ: multiplicacion_matrices_for_update_2
+---------------- fin multiplicacion_matrices_for_end_6 -----------------
+------------- inicio multiplicacion_matrices_for_update_2 --------------
+multiplicacion_matrices_for_update_2:
+  pred: multiplicacion_matrices_for_end_6
+  succ: multiplicacion_matrices_for_cond_1
+  t32 = 1
+  t33 = i + t32
+  i = t33
+  goto multiplicacion_matrices_for_cond_1
+--------------- fin multiplicacion_matrices_for_update_2 ---------------
+--------------- inicio multiplicacion_matrices_for_end_3 ---------------
+multiplicacion_matrices_for_end_3:
+  pred: multiplicacion_matrices_for_cond_1
+  return C
+---------------- fin multiplicacion_matrices_for_end_3 -----------------
+
+bloques main:
+---------------------------- inicio main_B0 ----------------------------
+main_B0:
+  calls: multiplicacion_matrices_B0
+  t1 = 1
+  t2 = 0
+  t3 = A[t2]
+  t4 = 0
+  t3[t4] = t1
+  t5 = 2
+  t6 = 0
+  t7 = A[t6]
+  t8 = 1
+  t7[t8] = t5
+  t9 = 3
+  t10 = 1
+  t11 = A[t10]
+  t12 = 0
+  t11[t12] = t9
+  t13 = 4
+  t14 = 1
+  t15 = A[t14]
+  t16 = 1
+  t15[t16] = t13
+  t17 = 5
+  t18 = 0
+  t19 = B[t18]
+  t20 = 0
+  t19[t20] = t17
+  t21 = 6
+  t22 = 0
+  t23 = B[t22]
+  t24 = 1
+  t23[t24] = t21
+  t25 = 7
+  t26 = 1
+  t27 = B[t26]
+  t28 = 0
+  t27[t28] = t25
+  t29 = 8
+  t30 = 1
+  t31 = B[t30]
+  t32 = 1
+  t31[t32] = t29
+  param A
+  param B
+  call multiplicacion_matrices, 2
+  t33 = 0
+  return t33
+----------------------------- fin main_B0 ------------------------------
