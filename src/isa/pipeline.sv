@@ -71,6 +71,7 @@ module pipeline ( // Pipeline de 5 etapas para arquitectura RISC: F32IS
     logic [1:0] MEM_MemToReg, MEM_RegWrite, MEM_MemWrite, MEM_Session;
     logic [7:0] MEM_MemBytes;
     logic [4:0] MEM_Branch;
+    logic [1:0] MEM_mem_ready;
     logic MEM_LoginRefresh;
     // + Señales de riesgos
     logic MEM_EN, MEM_CLR;
@@ -86,15 +87,34 @@ module pipeline ( // Pipeline de 5 etapas para arquitectura RISC: F32IS
     // + Señales de riesgos
     logic WB_EN;
 
+    // [Control de simulación]
+    logic ID_end_program;
+    logic MEM_end_program;
+    logic EX_end_program;
+    logic WB_end_program;
+
+    // Instrucciones para fin de programa
+    localparam logic [31:0] INSTR_END = 32'h1E000080;
+
     // ########################################################################################################
     // --- 0. Selección del PC  ---
     assign PC = (WB_PCSrc) ? PC_new : ( (MEM_PCSrc[0]) ? MEM_PCBranch : IF_PCplus4);
+
+    // + Flip-Flop para inicializar end program
+    always_ff @(posedge clk, posedge rst) begin
+        if (rst) begin
+            ID_end_program  <= 1'b0;
+            MEM_end_program <= 1'b0;
+            EX_end_program  <= 1'b0;
+            WB_end_program  <= 1'b0;
+        end
+    end
 
     // --- 1. Instruction Fetch (IF) ---
     // + Flip-Flop para pipe IF
     always_ff @(posedge clk, posedge rst) begin
         if (rst | IF_CLR) IF_PC <= '0;
-        else if (~IF_EN) IF_PC <= PC;
+        else if (!IF_EN) IF_PC <= PC;
     end
 
     assign IF_PCplus4 = IF_PC + 32'd4;
@@ -116,11 +136,12 @@ module pipeline ( // Pipeline de 5 etapas para arquitectura RISC: F32IS
     // --- 2. Instruction Decode (ID) ---
     // + Flip-Flop para pipe ID
     always_ff @(posedge clk, posedge rst) begin
-        if (rst | ID_CLR) begin 
+        if (rst | ID_CLR | ID_end_program) begin 
             ID_INSTR <= nop;
             ID_PCplus4 <= '0;
             ID_LoginRefresh <= '0;
-        end else if (~ID_EN) begin 
+        end else if (!ID_EN) begin
+            if (!ID_end_program) ID_end_program <= (ID_INSTR == INSTR_END);
             ID_INSTR <= IF_INSTR;
             ID_PCplus4 <= IF_PCplus4;
             ID_LoginRefresh <= IF_LoginRefresh;
@@ -191,7 +212,7 @@ module pipeline ( // Pipeline de 5 etapas para arquitectura RISC: F32IS
     // --- 3. Execute (EX) ---
     // + Flip-Flop para pipe EX
     always_ff @(posedge clk, posedge rst) begin
-        if (rst | EX_CLR) begin 
+        if (rst | EX_CLR | EX_end_program) begin 
             EX_INSTR <= nop;
             EX_PCplus4 <= '0;
             EX_Op1 <= '0;
@@ -211,7 +232,8 @@ module pipeline ( // Pipeline de 5 etapas para arquitectura RISC: F32IS
             EX_RegWrite <= '0;
             EX_MemToReg <= '0;
             EX_LoginRefresh <= '0;
-        end else if (~EX_EN) begin 
+        end else if (!EX_EN) begin 
+            if (!EX_end_program) EX_end_program <= (EX_INSTR == INSTR_END);
             EX_INSTR <= ID_INSTR;
             EX_PCplus4 <= ID_PCplus4;
             EX_Op1 <= ID_Op1;
@@ -266,7 +288,7 @@ module pipeline ( // Pipeline de 5 etapas para arquitectura RISC: F32IS
     // --- 4. Memory access (MEM) ---
     // + Flip-Flop para pipe MEM
     always_ff @(posedge clk, posedge rst) begin
-        if (rst | MEM_CLR) begin
+        if (rst | MEM_CLR | MEM_end_program) begin
             MEM_INSTR <= nop;
             MEM_RWB <= '0;
             MEM_ALUFlags <= '0;
@@ -282,7 +304,8 @@ module pipeline ( // Pipeline de 5 etapas para arquitectura RISC: F32IS
             MEM_RegWrite <= '0;
             MEM_MemToReg <= '0;
             MEM_LoginRefresh <= '0;
-        end else if (~MEM_EN) begin
+        end else if (!MEM_EN) begin
+            if (!MEM_end_program) MEM_end_program <= (MEM_INSTR == INSTR_END);
             MEM_INSTR <= EX_INSTR;
             MEM_RWB <= EX_RWB;
             MEM_ALUFlags <= EX_ALUFlags;
@@ -328,19 +351,25 @@ module pipeline ( // Pipeline de 5 etapas para arquitectura RISC: F32IS
     );
 
     // + Memoria de datos
-    data_memory #(.MEM_SIZE_KB(MEM_SIZE_KB)) _ram (
+    assign MEM_MemRead = (MEM_INSTR[5:1] == 5'b00100);
+
+    data_memory #(
+        .SIZE(4 * 1024),
+        .LATENCY(8),
+        .WPL(4)
+    ) _ram (
         .CLK(clk), .RST(rst),
-        .A(MEM_ALUOut),
-        .WE(MEM_MemWrite[1]),
-        .ASM(MEM_MemBytes[7:4]),
-        .WD(MEM_Op2),
-        .RD(MEM_MemOut)
+        .WE(MEM_MemWrite[1]), .WBM(MEM_MemBytes[7:4]), .WA(MEM_ALUOut), .WD(MEM_Op2),
+        .RE(MEM_MemRead), .RBM(MEM_MemBytes[7:4]), .RA(MEM_ALUOut), .RD(MEM_MemOut),
+        .ready(MEM_mem_ready),
+        .burst1_addr(), .burst2_addr(),
+        .burst1(), .burst2()
     );
 
     // --- 5. Writeback (WB) ---
     // + Flip-Flop para pipe WB
     always_ff @(posedge clk, posedge rst) begin
-        if (rst) begin
+        if (rst | WB_end_program) begin
             WB_INSTR <= nop;
             WB_ALUOut <= '0;
             WB_MemOut <= '0;
@@ -351,7 +380,8 @@ module pipeline ( // Pipeline de 5 etapas para arquitectura RISC: F32IS
             WB_PCSrc <= '0;
             WB_MemToReg <= '0;
             WB_RegWrite <= '0;
-        end else if (~WB_EN) begin 
+        end else if (!WB_EN) begin 
+            if (!WB_end_program) WB_end_program <= (WB_INSTR == INSTR_END);
             WB_INSTR <= MEM_INSTR;
             WB_ALUOut <= MEM_ALUOut;
             WB_MemOut <= MEM_MemOut;
@@ -378,7 +408,9 @@ module pipeline ( // Pipeline de 5 etapas para arquitectura RISC: F32IS
         .ALUOut(MEM_ALUOut), .DataOutWB(WB_DataOut),
         .branch_taken(MEM_PCSrc[0] | MEM_PCSrc[1] | WB_PCSrc),
         .mem_busy(1'b0),
-        .cache_search_ready(cache_search_ready),
+        .cache_search_ready(MEM_mem_ready[0]),
+        .cache_write_ready(MEM_mem_ready[1]),
+        .cache_write_halt(1'b0),
         .wb_busy(1'b0),
         .StallIF(IF_EN), .FlushIF(IF_CLR),
         .StallID(ID_EN), .FlushID(ID_CLR),
