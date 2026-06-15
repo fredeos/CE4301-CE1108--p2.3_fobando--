@@ -404,7 +404,7 @@ module pipeline_wcache ( // Pipeline de 5 etapas para arquitectura RISC: F32IS
         .MEM_SIZE(64 * 1024),
         .L1_ASO(2),
         .L2_ASO(4),
-        .WPL(2)
+        .WPL(8)
     ) _packed_mem (
         .CLK(clk), 
         .RST(rst),

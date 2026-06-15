@@ -356,7 +356,7 @@ module pipeline ( // Pipeline de 5 etapas para arquitectura RISC: F32IS
     data_memory #(
         .SIZE(64 * 1024),
         .LATENCY(25),
-        .WPL(4)
+        .WPL(8)
     ) _ram (
         .CLK(clk), .RST(rst),
         .WE(MEM_MemWrite[1]), .WBM(MEM_MemBytes[7:4]), .WA(MEM_ALUOut), .WD(MEM_Op2),
