@@ -282,7 +282,6 @@ always_ff @(posedge CLK, posedge RST) begin
     if (RST) begin
         // Reset logic
         read_counter <= '0;
-        ready[0] <= '0; hit[0] <= '0;
         RD <= '0;
 
         out_addr_burst1 <= '0;
@@ -301,9 +300,6 @@ always_ff @(posedge CLK, posedge RST) begin
             if (rd_done) read_counter <= '0;       // search complete
             else read_counter <= read_counter + 1; // standby (searching)
         end else read_counter <= '0;               // idle (not searching)
-        // >> Post results <<
-        ready[0] <= rd_done & RE;
-        hit[0] <= rd_pre_hit & RE;
         // >> Read logic <<
         if (rd_post_results) begin // post results
             // Read data
@@ -325,7 +321,6 @@ always_ff @(posedge CLK, posedge RST) begin
             locked <= 1'b1;
         end
     end else if (locked) begin // Locked cache behavior
-        // >> Post results <<
         // >> Miss logic <<
         if (line_is_filled[0] | ignore) begin 
             miss[0] <= 0;
@@ -340,6 +335,16 @@ always_ff @(posedge CLK, posedge RST) begin
             hit[0] <= '0;
             locked <= 1'b0;
         end
+    end
+end
+
+always_comb begin
+    // >> Post results <<
+    ready[0] = 1'b0;
+    hit[0] = 1'b0;
+    if (!locked) begin
+        ready[0] = rd_done & RE;
+        hit[0] = rd_pre_hit & rd_done & RE;
     end
 end
 
@@ -462,7 +467,6 @@ wire wd_post_results = WE & wd_done & wd_pre_hit;
 always_ff @(negedge CLK, posedge RST) begin
     if (RST) begin 
         write_counter <= '0;
-        ready[1] <= '0; hit[1] <= '0;
         queue <= 1'b0; dequeue <= 1'b0; pWBM <= '0; pWA <= '0; pWD <= '0;
         line_is_filled <= '0;
     end else begin 
@@ -471,9 +475,6 @@ always_ff @(negedge CLK, posedge RST) begin
             if (wd_done) write_counter <= '0;        // search complete
             else write_counter <= write_counter + 1; // standby (searching)
         end else write_counter <= '0;                // idle (not searching)
-        // >> Post results <<
-        ready[1] <= wd_done & WE;
-        hit[1] <= wd_pre_hit & WE;
         // >> Write logic <<
         // + Replacement logic (on every clock negedge)[FIFO policy]
         line_is_filled[0] <= addr1_match & fill;
@@ -551,12 +552,19 @@ always_ff @(negedge CLK, posedge RST) begin
                     end
                 endcase
             end
-        // >> Write-through <<
-        queue <= WE & wd_done; dequeue <= WE & wd_done;
-        pWBM <= WBM;
-        pWA <= WA;
-        pWD <= WD;
     end
+end
+
+always_comb begin
+    // >> Post results <<
+    ready[1] = wd_done & WE;
+    hit[1] = wd_pre_hit & wd_done & WE;
+    // >> Write-through <<
+    queue = WE & wd_done; 
+    dequeue = WE & wd_done;
+    pWBM = WBM;
+    pWA = WA;
+    pWD = WD;
 end
 
 endmodule

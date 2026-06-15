@@ -1,0 +1,30 @@
+globals:
+  resultado
+
+func sumatoria(limit) -> int
+  t1 = 0
+  val = t1
+  t2 = 0
+  i = t2
+L1:
+  if i < limit goto L2
+  goto L3
+L2:
+  t4 = val + i
+  val = t4
+L4:
+  t5 = 1
+  t6 = i + t5
+  i = t6
+  goto L1
+L3:
+  return val
+
+func main() -> void
+  t1 = 10
+  iters = t1
+  t2 = 10
+  param t2
+  t3 = call sumatoria, 1
+  resultado = t3
+  return
