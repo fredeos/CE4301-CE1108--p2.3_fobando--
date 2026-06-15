@@ -16,11 +16,14 @@ module pipeline_wcache_tb ();
     int cache_l1_misses   = 0;
     int cache_l2_accesses = 0;
     int cache_l2_misses   = 0;
+    int total_instr       = 0;
+    int total_cycles      = 0;
 
     // ── Cambio principal: usar 'real' en lugar de 'int' ──
     real miss_rate_l1 = 0.0;
     real miss_rate_l2 = 0.0;
     real amat         = 0.0;
+    real ipc          = 0.0;
 
     always #5 clk = ~clk;
     always_ff @(posedge clk) cycle <= cycle + 1;
@@ -77,27 +80,29 @@ module pipeline_wcache_tb ();
         force _cpu._pmu.read_addr = 5'd8; @(posedge clk); #1;
         pmu_val           = _cpu._pmu.read_data;
         cache_l1_accesses = int'(_cpu._pmu.read_data);
-        $display("Total L1 Accesses : %0d", pmu_val);
+        $display("Total L1 Accesses         : %0d", pmu_val);
 
         force _cpu._pmu.read_addr = 5'd2; @(posedge clk); #1;
         pmu_val         = _cpu._pmu.read_data;
         cache_l1_misses = int'(_cpu._pmu.read_data);
-        $display("Total L1 Misses   : %0d", pmu_val);
+        $display("Total L1 Misses           : %0d", pmu_val);
 
         force _cpu._pmu.read_addr = 5'd3; @(posedge clk); #1;
         pmu_val = _cpu._pmu.read_data;
-        $display("L1 Miss Read      : %0d", pmu_val);
+        $display("L1 Miss Read              : %0d", pmu_val);
 
         force _cpu._pmu.read_addr = 5'd4; @(posedge clk); #1;
         pmu_val = _cpu._pmu.read_data;
-        $display("L1 Miss Write     : %0d", pmu_val);
+        $display("L1 Miss Write             : %0d", pmu_val);
 
         // División en punto flotante
         if (cache_l1_accesses > 0)
             miss_rate_l1 = real'(cache_l1_misses) / real'(cache_l1_accesses);
         else
             miss_rate_l1 = 0.0;
-        $display("Miss Rate L1      : %.4f", miss_rate_l1);
+
+        $display("Hit Rate L1               : %.4f", 1 - miss_rate_l1);
+        $display("Miss Rate L1              : %.4f", miss_rate_l1);
 
         // ── Cache L2 ──
         $display("\n--- Cache L2 ---");
@@ -105,44 +110,59 @@ module pipeline_wcache_tb ();
         force _cpu._pmu.read_addr = 5'd9; @(posedge clk); #1; #10;
         pmu_val           = _cpu._pmu.read_data;
         cache_l2_accesses = int'(_cpu._pmu.read_data);
-        $display("Total L2 Accesses : %0d", pmu_val);
+        $display("Total L2 Accesses         : %0d", pmu_val);
 
         force _cpu._pmu.read_addr = 5'd5; @(posedge clk); #1; #10;
         pmu_val         = _cpu._pmu.read_data;
         cache_l2_misses = int'(_cpu._pmu.read_data);
-        $display("Total L2 Misses   : %0d", pmu_val);
+        $display("Total L2 Misses           : %0d", pmu_val);
 
         force _cpu._pmu.read_addr = 5'd6; @(posedge clk); #1; #10;
         pmu_val = _cpu._pmu.read_data;
-        $display("L2 Miss Read      : %0d", pmu_val);
+        $display("L2 Miss Read              : %0d", pmu_val);
 
         force _cpu._pmu.read_addr = 5'd7; @(posedge clk); #1; #10;
         pmu_val = _cpu._pmu.read_data;
-        $display("L2 Miss Write     : %0d", pmu_val);
+        $display("L2 Miss Write             : %0d", pmu_val);
 
         // División en punto flotante
         if (cache_l2_accesses > 0)
             miss_rate_l2 = real'(cache_l2_misses) / real'(cache_l2_accesses);
         else
             miss_rate_l2 = 0.0;
-        $display("Miss Rate L2      : %.4f", miss_rate_l2);
+        $display("Hit Rate L2               : %.4f", 1 - miss_rate_l2);
+        $display("Miss Rate L2              : %.4f", miss_rate_l2);
 
         // ── General ──
         $display("\n--- General ---");
 
         force _cpu._pmu.read_addr = 5'd1; @(posedge clk); #1;
         pmu_val = _cpu._pmu.read_data;
-        $display("Total Misses      : %0d", pmu_val);
+        $display("Total Misses              : %0d", pmu_val);
 
         force _cpu._pmu.read_addr = 5'd0; @(posedge clk); #1;
         pmu_val = _cpu._pmu.read_data - secure_ending_cycles;
-        $display("Total Cycles      : %0d", pmu_val);
+        total_cycles = int'(_cpu._pmu.read_data);
+        $display("Total Cycles              : %0d", pmu_val);
+
+        force _cpu._pmu.read_addr = 5'd11; @(posedge clk); #1;
+        pmu_val = _cpu._pmu.read_data;
+        total_instr = int'(_cpu._pmu.read_data);
+        $display("Total Instructions        : %0d", pmu_val);
+
+        ipc = real'(total_instr) / real'(total_cycles);
+        $display("IPC                       : %0.3f", ipc);
+
+
+        force _cpu._pmu.read_addr = 5'd10; @(posedge clk); #1;
+        pmu_val = _cpu._pmu.read_data;
+        $display("Total Memory Accesses     : %0d", pmu_val);
 
         // AMAT en punto flotante
         amat = real'(_cpu._packed_mem.L1_LATENCY)
              + miss_rate_l1 * (real'(_cpu._packed_mem.L2_LATENCY)
              + miss_rate_l2 *  real'(_cpu._packed_mem.MEM_LATENCY));
-        $display("AMAT              : %.4f", amat);
+        $display("AMAT                      : %.4f", amat);
 
         release _cpu._pmu.read_addr;
 
