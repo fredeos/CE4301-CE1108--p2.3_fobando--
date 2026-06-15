@@ -428,8 +428,13 @@ logic [1:0] wd_match [0:1]; // [0]: nearest word, [1]: next word
 assign wd_match[0][0] = addr1_match & (wd_tag[0] == burst_tag[0]) & (wd_set[0] == burst_set[0]); // match with burst 1
 assign wd_match[0][1] = addr2_match & (wd_tag[0] == burst_tag[1]) & (wd_set[0] == burst_set[1]); // match with burst 2
 
-assign wd_match[1][0] = addr1_match & (wd_tag[1] == burst_tag[0]) & (wd_set[0] == burst_set[0]); // match with burst 1
-assign wd_match[1][1] = addr2_match & (wd_tag[1] == burst_tag[1]) & (wd_set[0] == burst_set[1]); // match with burst 2
+assign wd_match[1][0] = addr1_match &
+                         (wd_tag[1] == burst_tag[0]) &
+                         (wd_set[1] == burst_set[0]);
+
+assign wd_match[1][1] = addr2_match &
+                         (wd_tag[1] == burst_tag[1]) &
+                         (wd_set[1] == burst_set[1]);
 
 wire wd1_correction = clk_align & (wd_match[0][0] | wd_match[0][1]);
 wire wd2_correction = clk_align & (wd_match[1][0] | wd_match[1][1]);

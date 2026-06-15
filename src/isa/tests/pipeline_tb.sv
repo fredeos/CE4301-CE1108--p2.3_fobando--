@@ -16,9 +16,6 @@ module pipeline_tb ();
     real ipc               = 0;
     int amat = 0;
 
-
-
-
     always #5 clk = ~clk;
     always_ff @(posedge clk) cycle <= cycle + 1;
 
@@ -52,7 +49,6 @@ module pipeline_tb ();
         end
 
 
-        
         // El while ahora depende de una condición de tiempo y del valor
         while (j < secure_ending_cycles) begin
             @(posedge clk);
