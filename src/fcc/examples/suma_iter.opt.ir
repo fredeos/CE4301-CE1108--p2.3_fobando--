@@ -1,0 +1,23 @@
+func suma(a) -> int
+  t1 = 0
+  result = t1
+  t2 = 0
+  i = t2
+L1:
+  if i <= a goto L2
+  goto L3
+L2:
+  t4 = result + i
+  result = t4
+  t5 = 1
+  t6 = i + t5
+  i = t6
+  goto L1
+L3:
+  return result
+
+func main() -> int
+  t1 = 10
+  param t1
+  t2 = call suma, 1
+  return t2

@@ -18,6 +18,12 @@ INSTRMEM = ${CPU_SRC}/instrmem
 
 DATAMEM = ${CPU_SRC}/datamem
 
+CACHE = ${CPU_SRC}/cache
+
+PMU = ${CPU_SRC}/pmu
+
+PACKEDM = ${CPU_SRC}/packed_mem
+
 VAULT = ${CPU_SRC}/vault
 
 # --- Directorios de bancos registros ---
@@ -35,7 +41,10 @@ IMMEXT = ${CPU_SRC}/imm_ext
 
 #////////////////////////////////////////////////////////////////////////////////
 # --- Archivos de codigo fuente para ejecutar pruebas ---
-MODS = ${CONTROL}/*.sv ${ADMIN}/*.sv ${CONDUNIT}/*.sv ${SSU}/*.sv ${INSTRMEM}/*.sv ${DATAMEM}/*.sv ${VAULT}/*.sv ${REGFILE}/*.sv ${SECMEM}/*.sv ${ALU}/*.sv ${HAZARD}/*.sv ${IMMEXT}/*.sv
+MODS = ${CONTROL}/*.sv ${ADMIN}/*.sv ${CONDUNIT}/*.sv ${SSU}/*.sv \
+       ${INSTRMEM}/*.sv ${DATAMEM}/*.sv ${VAULT}/*.sv ${REGFILE}/*.sv \
+       ${SECMEM}/*.sv ${ALU}/*.sv ${HAZARD}/*.sv ${IMMEXT}/*.sv \
+       ${CACHE}/*.sv ${PACKEDM}/*.sv ${PMU}/*.sv
 
 #////////////////////////////////////////////////////////////////////////////////
 TARGET = pipeline
@@ -59,8 +68,14 @@ ssu: dirs
 instrmem: dirs
 	iverilog -g2012 -o ${GEN}/$@.out ${INSTRMEM}/*.sv ${INSTRMEM}/tests/*.sv
 
+cache: dirs
+	iverilog -g2012 -o ${GEN}/$@.out ${CACHE}/*.sv ${CACHE}/tests/*.sv
+
 datamem: dirs
 	iverilog -g2012 -o ${GEN}/$@.out ${DATAMEM}/*.sv ${DATAMEM}/tests/*.sv
+
+packed_mem: dirs
+	iverilog -g2012 -o ${GEN}/$@.out ${PACKEDM}/*.sv ${CACHE}/*.sv ${DATAMEM}/*.sv ${PACKEDM}/tests/*.sv
 
 vault: dirs
 	iverilog -g2012 -o ${GEN}/$@.out ${VAULT}/*.sv ${VAULT}/tests/*.sv
@@ -87,15 +102,19 @@ imm_ext: dirs
 pipeline: dirs
 	iverilog -g2012 -o ${GEN}/$@.out ${CPU_SRC}/$@.sv ${MODS} ${CPU_SRC}/tests/$@_tb.sv
 
+	
 pipeline_wcache: dirs
-	iverilog -g2012 -o ${GEN}/$@.out ${CPU_SRC}/$@.sv ${MODS} ${CPU_SRC}/tests/$@_tb.sv
+	iverilog -g2012 -o ${GEN}/$@.out \
+	${CPU_SRC}/pipeline_wcache.sv \
+	${MODS} \
+	${CPU_SRC}/tests/pipeline_wcache_tb.sv
 
 # + Reglas varias
 run:
 	vvp ${GEN}/$(TARGET).out 
 	gtkwave ${GEN}/$(TARGET).vcd ./config/$(CONFIG).gtkw
 
-pyload-mem:
+payload-mem:
 	python src/load_file.py --input input/$(INPUT) --output src/$(OUTPUT) --address $(ADDRESS)
 
 pyextract-data:
@@ -107,5 +126,8 @@ dirs:
 clean:
 	rm ./output/**
 	rm ./gen/**
+
+test:
+	@echo "El makefile esta funcionando"
 
 .PHONY: dirs clean

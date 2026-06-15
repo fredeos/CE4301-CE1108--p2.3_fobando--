@@ -253,7 +253,15 @@ def print_symbol_table(symbol_table):
         if not scope.symbols:
             print("    - sin simbolos")
             continue
-        for name, symbol in scope.symbols.items():
+        visible_symbols = [
+            (name, symbol)
+            for name, symbol in scope.symbols.items()
+            if not symbol.extra.get("compiler_generated")
+        ]
+        if not visible_symbols:
+            print("    - sin simbolos")
+            continue
+        for name, symbol in visible_symbols:
             if symbol.kind == "function":
                 type_text = symbol.extra.get("signature", str(symbol.return_type))
             else:

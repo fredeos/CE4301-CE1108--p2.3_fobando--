@@ -1,0 +1,13 @@
+func suma(a, b) -> int
+  t1 = a + b
+  return t1
+
+func main() -> int
+  t1 = 2
+  a = t1
+  t2 = 3
+  b = t2
+  param a
+  param b
+  t3 = call suma, 2
+  return t3
