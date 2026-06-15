@@ -6,6 +6,11 @@
 
 En el siguiente diagrama se muestra como se ve la jerarquía de memoria acoplada entre los pipes de MEM y WB del procesador.
 
+<p align="center">
+    <img src="../images/memh.svg" width=1500>
+</p>
+
+
 ## 2. Especificaciones de la caché y memoria
 
 A continuación se describen las características de la memoria caché y memoria de datos, que incluye sus políticas de escritura y reemplazo seleccionadas, implementadas en SystemVerilog.
@@ -19,6 +24,11 @@ A continuación se describen las características de la memoria caché y memoria
 + **ESCRITURA**: write-through con buffer de escritura
 + **REEMPLAZO**: FIFO o Random
 
+<p align="center">
+    <img src="../images/$l1-d.svg" width=800>
+</p>
+
+
 ### Caché L2
 
 + **TAMAÑO**: *(modificable)* 16 KB
@@ -27,6 +37,11 @@ A continuación se describen las características de la memoria caché y memoria
 + **LATENCIA**: *(modificable)* 8 ciclos
 + **ESCRITURA**: write-through con buffer de escritura
 + **REEMPLAZO**: FIFO o Random
+
+<p align="center">
+    <img src="../images/$l2.svg" width=800>
+</p>
+
 
 ### Memoria Principal
 
