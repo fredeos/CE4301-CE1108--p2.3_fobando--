@@ -282,7 +282,6 @@ always_ff @(posedge CLK, posedge RST) begin
     if (RST) begin
         // Reset logic
         read_counter <= '0;
-        ready[0] <= '0; hit[0] <= '0;
         RD <= '0;
 
         out_addr_burst1 <= '0;
@@ -463,7 +462,6 @@ wire wd_post_results = WE & wd_done & wd_pre_hit;
 always_ff @(negedge CLK, posedge RST) begin
     if (RST) begin 
         write_counter <= '0;
-        ready[1] <= '0; hit[1] <= '0;
         queue <= 1'b0; dequeue <= 1'b0; pWBM <= '0; pWA <= '0; pWD <= '0;
         line_is_filled <= '0;
     end else begin 

@@ -141,7 +141,6 @@ module data_memory #(
     always_ff @(posedge CLK, posedge RST) begin 
         if (RST) begin
             read_counter <= '0;
-            ready[0] <= 0;
             RD <= '0;
             burst1_addr <= '0;
             burst2_addr <= '0;
@@ -155,7 +154,6 @@ module data_memory #(
                 if (rd_done) read_counter <= '0;      // search complete
                 else read_counter <= read_counter + 1;// standby (searching)
             end else read_counter <= '0;              // idle (not searching)
-            ready[0] <= rd_done & RE;
             // >> Read logic <<
             if (RE && rd_done) begin 
                 // Read data
@@ -170,6 +168,8 @@ module data_memory #(
             end
         end
     end
+
+    assign ready[0] = rd_done & RE;
 
     // --- Synchronous write (store) ---
     // + Write bytes
@@ -191,14 +191,12 @@ module data_memory #(
     always_ff @(negedge CLK, posedge RST) begin 
         if (RST) begin
             write_counter <= '0;
-            ready[1] <= 0;
         end else begin
             // >> Counter update logic <<
             if (WE) begin 
                 if (wd_done) write_counter <= '0;       // search complete
                 else write_counter <= write_counter + 1;// standby (searching)
             end else write_counter <= '0;               // idle (not searching)
-            ready[1] <= wd_done & WE;
             // >> Write logic <<
             if (WE && wd_done) begin
                 case (wd_byte_offset)
@@ -233,5 +231,7 @@ module data_memory #(
             end
         end
     end
+
+    assign ready[1] = wd_done & WE;
 
 endmodule
