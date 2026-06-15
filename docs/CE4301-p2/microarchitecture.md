@@ -11,7 +11,7 @@ En esta sección se detalla la organización interna del procesador diseñado pa
 A continuación se muestra el pipeline implementado con memoria de datos (memoria principal) con latencia.
 
 <p align="center">
-    <img src="../images/datapath.svg" width=1500>
+    <img src="../images/pipeline1.svg" width=1500>
 </p>
 
 ### 2. Procesador con caché
@@ -19,7 +19,7 @@ A continuación se muestra el pipeline implementado con memoria de datos (memori
 A continuación se muestra el pipeline implementado con una jerarquía de memoria (módulo packed_mem) con latencia.
 
 <p align="center">
-    <img src="../images/datapath.svg" width=1500>
+    <img src="../images/pipeline2.svg" width=1500>
 </p>
 
 Notese que en los diagramas anteriores se resaltan las entradas y salidas del Hazard Unit con colores azules y verdes, respectivamente, mientras que para señales de control del Control Unit se utilizan múltiples colores y para conexiones de cada etapa se utiliza el color negro. Otro aspecto importante de notar es que todos los circuitos secuenciales y flip-flops tiene un señal RST, distinta a los CLR visibles, que permiten limpiar los registros de manera asíncrona para poder inicialiar el estado inicial del procesador (pipeline vacío).
